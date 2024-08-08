@@ -10,7 +10,6 @@
 
 
 #include <CrsfSerial.h>
-
 #if defined(__AVR_ATmega2560__)
 CrsfSerial crsf(Serial1, CRSF_BAUDRATE);
 #else
@@ -51,47 +50,90 @@ private:
 };
 
 void RC_callback();
-int throttle,roll,pitch,yaw,LT,RT,LB,RB,LP;
+int throttle,roll,pitch,yaw,LB,RB,LP;
+bool RT = true;
+bool LT = true;
 Motor FrontLeft_motor(52,53,4);
 Motor FrontRight_motor(50,51,5);
 Motor RearLeft_motor(26,27,6);
 Motor RearRight_motor(24,25,7);
-
-int PrintCPT = 0;
 
 /**
  * @brief Executed once on power-up or reboot
  */
 void setup() {
   Serial.begin(115200);
+
+  while (!Serial) {
+      ; // Attendre que la connexion série soit établie (utile lors de l'utilisation de certaines cartes comme l'UNO)
+    }
+
   crsf.begin();
   crsf.onPacketChannels = &RC_callback;
 }
-
+String control_mode = "SERIAL";
+String receivedData="";
+float X = 0.0;
+float Y = 0.0;
+float Z = 0.0;
+float Vx,Vy,dtheta;
 /**
  * @brief Executes cyclically while the power is on
  */
 void loop() { 
   crsf.loop(); 
-  Serial.print("Running");
-  Serial.println(); 
+  readSerial();
+  kinematics();
   }
 
-void RC_callback() {
-  PrintCPT++;
-  refresh_RC_commands();
-  kinematics();
-  /*
-  if (PrintCPT> 100){
-    PrintCPT = 0;
-    kinematics();
+void readSerial()
+{
+  if (Serial.available() > 0) {
+      char receivedChar = Serial.read();  // Lire un caractère
+      if (receivedChar == '\n') {  // Fin de la ligne (si utilisé comme délimiteur)
+        parseString(receivedData);
+        receivedData = "";  // Réinitialiser pour la prochaine chaîne
+      } else {
+        receivedData += receivedChar;  // Ajouter le caractère à la chaîne reçue
+      }
+    }
+}
+
+
+
+void parseString(String str) {
+  // Chercher les positions des délimiteurs (espaces)
+  int xIndex = str.indexOf('X');
+  int yIndex = str.indexOf('Y');
+  int zIndex = str.indexOf('Z');
+
+  // Extraire les sous-chaînes pour X, Y, Z
+  if (xIndex != -1) {
+    int spaceIndex = str.indexOf(' ', xIndex);
+    if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'X' est le dernier élément
+    X = str.substring(xIndex + 1, spaceIndex).toFloat();
   }
-  */
-  
+
+  if (yIndex != -1) {
+    int spaceIndex = str.indexOf(' ', yIndex);
+    if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Y' est le dernier élément
+    Y = str.substring(yIndex + 1, spaceIndex).toFloat();
+  }
+
+  if (zIndex != -1) {
+    int spaceIndex = str.indexOf(' ', zIndex);
+    if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
+    Z = str.substring(zIndex + 1, spaceIndex).toFloat();
+  }
+}
+
+
+void RC_callback() {
+  refresh_RC_commands();
+  //kinematics(); 
 }
 
 void refresh_RC_commands(){
-  //for (auto ch{1}; ch <= CRSF_NUM_CHANNELS; ++ch) {
   throttle = crsf.getChannel(1);
   throttle = constrain(map(throttle,1000,2000,-100,100), -100, 100);
   roll = crsf.getChannel(2);
@@ -101,6 +143,11 @@ void refresh_RC_commands(){
   yaw= crsf.getChannel(4);
   yaw = -constrain(map(yaw,1000,2000,-100,100), -100, 100);  
   LT= single_switch(crsf.getChannel(5));
+  if (RT){
+    control_mode="RC";
+  }else{
+    control_mode="SERIAL";
+  }
   RT= single_switch(crsf.getChannel(6));
   LB= double_switch(crsf.getChannel(7));
   RB= double_switch(crsf.getChannel(8));
@@ -116,13 +163,38 @@ float L = 0.25; // wheels length distance
 float W = 0.2;  // wheels width distance
 
 void kinematics(){
+  if(control_mode == "RC") {
+    Vx = pitch;
+    Vy = roll ; 
+    dtheta = yaw; 
+  } else if (control_mode=="SERIAL")
+  {
+    Vx     = X;
+    Vy     = Y;
+    dtheta = Z;
+  }
+  if (!LT){
+    Vx     = 0;
+    Vy     = 0;
+    dtheta = 0;
+
+  }
+  Serial.print("====================");
+  Serial.println(); 
+  Serial.print(Vx);
+  Serial.println();
+  Serial.print(Vy);
+  Serial.println();
+  Serial.print(dtheta);
+  Serial.println();
+
   // Calculer les vitesses des roues
-  float omega1 = (pitch - roll - (L + W) * yaw);
-  float omega2 = (pitch + roll + (L + W) * yaw);
-  float omega3 = (pitch + roll - (L + W) * yaw);
-  float omega4 = (pitch - roll + (L + W) * yaw);
+  float omega1 = (Vx - Vy - (L + W) * dtheta);
+  float omega2 = (Vx + Vy + (L + W) * dtheta);
+  float omega3 = (Vx + Vy - (L + W) * dtheta);
+  float omega4 = (Vx - Vy + (L + W) * dtheta);
   float maxSpeed = max(max(abs(omega1), abs(omega2)), max(abs(omega3), abs(omega4)));
-  float maxThrottle = max((float)max(abs(roll),(float)abs(pitch)),(float)abs(yaw))/100;
+  float maxThrottle = max((float)max(abs(Vy),(float)abs(Vx)),(float)abs(dtheta))/100;
   // Normaliser les vitesses des roues pour qu'elles se situent entre -255 et 255
   if (maxSpeed > 0) {
     omega1 = omega1 / maxSpeed * 255 * maxThrottle  ;
@@ -143,38 +215,7 @@ void kinematics(){
   int pwmRL = constrain(omega3,-255,255); // Convertir float en int
   int pwmRR = constrain(omega4,-255,255); // Convertir float en int
 
-  Serial.print("====================");
-  Serial.println(); 
-  Serial.print(pitch);
-  Serial.println();
-  Serial.print(roll);
-  Serial.println();
-  
-  Serial.print("OMEGA");
-  Serial.println();
 
-  Serial.print(omega1);
-  Serial.println();
-  Serial.print(omega2);
-  Serial.println();  
-  Serial.print(omega3);
-  Serial.println();
-  Serial.print(omega4);
-  Serial.println();
-
-  Serial.print("THROTTLE");
-  Serial.println();
-  Serial.print(maxSpeed);
-  Serial.println();  
-  Serial.print(maxThrottle);
-  Serial.println();
-
-  Serial.print("PWM");
-  Serial.println();
-  Serial.print(pwmFL);
-  Serial.println();  
-  Serial.print(pwmFR);
-  Serial.println();
 
   FrontLeft_motor.setSpeed(pwmFL);
   FrontRight_motor.setSpeed(pwmFR);
