@@ -27,28 +27,44 @@ CrsfSerial crsf(Serial1, CRSF_BAUDRATE);
 // Distances inter-moteurs
 float L = 0.25; // wheels length distance
 float W = 0.2;  // wheels width distance
-float wheel_radius=(97.0/2.0)/1000.0; //wheel diameter (meter)
+float wheel_radius=(97.0/2.0)/1000.0; //wheel radius (meter)
 
 // Gestion fréquence boucle
 const unsigned long SAMPLING_FREQUENCY = 100; // Fréquence en Hz (nombre de boucles par seconde)
 const unsigned long SAMPLING_PERIOD = 1000 / SAMPLING_FREQUENCY; // Période en millisecondes
 
-const unsigned long PID_FREQUENCY = 25; // Fréquence en Hz (nombre de boucles par seconde)
+const unsigned long PID_FREQUENCY = 100; // Fréquence en Hz (nombre de boucles par seconde)
 const unsigned long PID_PERIOD = 1000 / PID_FREQUENCY; // Période en millisecondes
 unsigned long lastPIDTime = 0;
+
+float Kp_Vx = 0.3;
+float Ki_Vx = 0.01;
+float Kp_Vy = 0.3;
+float Ki_Vy = 0.01;
+float Kp_omegaZ = 0.1;
+float Ki_omegaZ = 0.001;
+
+const unsigned long DISPLAY_FREQUENCY = 25; // Fréquence en Hz (nombre de boucles par seconde)
+const unsigned long DISPLAY_PERIOD = 1000 / DISPLAY_FREQUENCY; // Période en millisecondes
+unsigned long lastDISPLAYTime = 0;
+
+const int SENSOR_AVG_FACTOR = SAMPLING_FREQUENCY/PID_FREQUENCY;
 
 const unsigned long SETPOINT_FREQUENCY = 1; // Fréquence en Hz (nombre de boucles par seconde)
 const unsigned long SETPOINT_PERIOD = 1000 / SETPOINT_FREQUENCY; // Période en millisecondes
 unsigned long lastSetpointTime = 0;
-float lastSetpoint = 2;
+
+
 const float HIGH_SETPOINT_ROUND_PER_SEC = -1.0;
 const float LOW_SETPOINT_ROUND_PER_SEC = 2.0;
+
 const float HIGH_SETPOINT_RAD_PER_SEC = HIGH_SETPOINT_ROUND_PER_SEC*2*PI;
 const float LOW_SETPOINT_RAD_PER_SEC = LOW_SETPOINT_ROUND_PER_SEC*2*PI;
 
-const float LOW_SETPOINT_METER_SEC = -0.5;
+const float LOW_SETPOINT_METER_SEC = 0.2;
 const float HIGH_SETPOINT_METER_SEC = 0.5;
 
+float lastSetpoint = LOW_SETPOINT_METER_SEC;
 
 class Motor {
 public:
@@ -88,10 +104,17 @@ public:
         float d_rpm = _target_rotation_speed-_rotationSpeed;
         float derivate_d_rpm = d_rpm-_previous_error;
         _sum_d_rpm += d_rpm;
-        float I_sat = _sum_d_rpm*_Ki;
-        //float I_sat = constrain(_sum_d_rpm*_Ki,-100,100);
+        //float I_sat = _sum_d_rpm*_Ki;
+        float I_sat = constrain(_sum_d_rpm*_Ki,-100,100);
         _pwm_corrected = (_target_rotation_speed/_top_rotation_speed)*255+d_rpm*_Kp + I_sat +_Kd*derivate_d_rpm;
         _previous_error = d_rpm;
+        //print_commands();
+    }
+
+    void get_rev_counter()
+    {
+      float total_dist = (float)_total_tachy/(float)tachy_per_turn*2*PI;
+      return total_dist;
     }
 
     void print_commands()
@@ -103,7 +126,10 @@ public:
 
     void send_PID_input()
     {
+      if ((abs(_previous_pwm-_pwm_corrected))>_MAX_PWM_DIFF){
+      }
       sendPWM(_pwm_corrected);
+      _previous_pwm = _pwm_corrected;
     }
 
     void set_Ki(float Ki){_Ki = Ki;}
@@ -133,7 +159,7 @@ public:
     void update_rotation_speed() {
         float nb_tour = (float)_tachy/(float)tachy_per_turn;
         float round_per_sec = nb_tour/SAMPLING_PERIOD*1000;
-        float rad_per_sec = round_per_sec*PI;
+        float rad_per_sec = round_per_sec*2*PI;
         _rotationSpeed = rad_per_sec;  
         /*
         Serial.println(); 
@@ -152,7 +178,7 @@ public:
 private:
     const int tachy_per_turn = 816; //Résolution encodeur
     const float _top_rotation_speed = 5.5*2*PI; // Vmax moteur, à changer en dynamique dépendemment voltage
-
+    const int _MAX_PWM_DIFF = 50;
     int _tachy = 0;
     long int _total_tachy = 0;
     float _rotationSpeed = 0.0;
@@ -167,6 +193,7 @@ private:
     //PID values
     float _target_rotation_speed = 0;
     int _pwm_corrected;
+    int _previous_pwm = 0;
     float _Kp = 20;
     float _Ki = 3;
     float _Kd = 10;
@@ -196,19 +223,28 @@ bool LT = true;
 
 String control_mode = "SERIAL";
 String receivedData="";
-float X_command = 0.0;
-float Y_command = 0.0;
-float Z_command = 0.0;
-float Vx,Vy,dtheta;
 
+float Vx_setpoint = 0.0;
+float Vy_setpoint = 0.0;
+float omegaZ_setpoint = 0.0;
+
+float Vx_corrected,Vy_corrected,omegaZ_corrected;
+float Vx_odo,Vy_odo,omegaZ_odo;
+
+bool Serial_Connected = false ;
 
 /**
  * @brief Executed once on power-up or reboot
  */
 void setup() {
-  /*
+  
   Serial.begin(115200);
-
+  delay(10);
+  if (Serial)
+  {
+    Serial_Connected = true;
+  }
+  /*
   while (!Serial) {
       ; // Attendre que la connexion série soit établie (utile lors de l'utilisation de certaines cartes comme l'UNO)
     }
@@ -228,33 +264,40 @@ void setup() {
 void loop() { 
   unsigned long t0 = millis();
   crsf.loop(); 
-  //readSerial();
+  if (Serial_Connected){
+    readSerial();
+  }
   if(control_mode == "RC") {
     RC_commands();
-  } else if (control_mode=="SERIAL")
+  } 
+  else if (control_mode=="SERIAL")
   {
-    kinematics();
+    inverse_kinematics();
   }
   update_sensors();
-
-  unsigned long now = millis();
-    // Vérifier si l'intervalle PID est atteint
-  if (now - lastPIDTime >= PID_PERIOD) {
-      lastPIDTime = now; // Mettre à jour le dernier temps PID
+  forward_kinematics();
+  
+  unsigned long now_PID = millis();
+  if (now_PID - lastPIDTime >= PID_PERIOD) {
+      lastPIDTime = now_PID; // Mettre à jour le dernier temps PID
       // Calcul du PID
-      update_motor_PID();
+      update_velocity_PID();
+      
+  }
+  update_motor_PID();
+
+
+
+  unsigned long now_display = millis();
+  if (now_display - lastDISPLAYTime >= DISPLAY_PERIOD) {
+    lastDISPLAYTime = now_display;
+    //display_motor_speed();
+    display_fwd_kinematics();
   }
 
-  if (now - lastSetpointTime >= SETPOINT_PERIOD) {
-    if (lastSetpoint==LOW_SETPOINT_METER_SEC)
-    {
-      lastSetpoint = HIGH_SETPOINT_METER_SEC;
-    }
-    else{
-      lastSetpoint = LOW_SETPOINT_METER_SEC;
-    }
-    lastSetpointTime = now;
-    X_command = lastSetpoint;
+  unsigned long now_setpoint = millis();
+  if (now_setpoint - lastSetpointTime >= SETPOINT_PERIOD) {
+    update_setpoint(now_setpoint);
   }
 
 //////////////////////////////////////////////////////////////////////////////////
@@ -264,6 +307,19 @@ void loop() {
     delay(SAMPLING_PERIOD - deltaT);
   }
   }
+
+void update_setpoint(unsigned long now_setpoint){
+    if (lastSetpoint==LOW_SETPOINT_METER_SEC)
+    {
+      lastSetpoint = HIGH_SETPOINT_METER_SEC;
+    }
+    else
+    {
+      lastSetpoint = LOW_SETPOINT_METER_SEC;
+    }
+    lastSetpointTime = now_setpoint;
+    Vx_setpoint = lastSetpoint;
+}
 
 void update_motors_command()
 {
@@ -318,7 +374,7 @@ void tachy_rear_right()
   RearRight_motor.increase_tachy();
 }
 
-void readSerial()
+void readSerial() // Lecture des données envoyées sur le port Série 0
 {
   if (Serial.available() > 0) {
       char receivedChar = Serial.read();  // Lire un caractère
@@ -345,40 +401,45 @@ void parseString(String str) {
   if (xIndex != -1) {
     int spaceIndex = str.indexOf(' ', xIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'X' est le dernier élément
-    X_command = str.substring(xIndex + 1, spaceIndex).toFloat();
-    FrontLeft_motor.setSpeed(X_command);
+    Vx_setpoint = str.substring(xIndex + 1, spaceIndex).toFloat();
   }
 
   if (yIndex != -1) {
     int spaceIndex = str.indexOf(' ', yIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Y' est le dernier élément
-    Y_command = str.substring(yIndex + 1, spaceIndex).toFloat();
+    Vy_setpoint = str.substring(yIndex + 1, spaceIndex).toFloat();
   }
 
   if (zIndex != -1) {
     int spaceIndex = str.indexOf(' ', zIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
-    Z_command = str.substring(zIndex + 1, spaceIndex).toFloat();
+    omegaZ_setpoint = str.substring(zIndex + 1, spaceIndex).toFloat();
   }
 
   if (pIndex != -1) {
     int spaceIndex = str.indexOf(' ', pIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
     float Kp = str.substring(pIndex + 1, spaceIndex).toFloat();
+    Kp_Vx = Kp;
+    /*
     for (int i=0;i<motors_list_length;i++)
     {
       motors_list[i]->set_Kp(Kp);
     }
+    */
   }
 
   if (iIndex != -1) {
     int spaceIndex = str.indexOf(' ', iIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
     float Ki = str.substring(iIndex + 1, spaceIndex).toFloat();
+    Ki_Vx = Ki;
+    /*
     for (int i=0;i<motors_list_length;i++)
       {
         motors_list[i]->set_Ki(Ki);
       }
+      */
   }
 
   if (dIndex != -1) {
@@ -393,7 +454,6 @@ void parseString(String str) {
 
 
   }
-
 
 void RC_callback() {
   throttle = crsf.getChannel(1);
@@ -448,16 +508,16 @@ void update_commands(float omega1,float omega2,float omega3,float omega4){
 }
 
 void RC_commands(){
-  Vx = pitch;
-  Vy = roll ; 
-  dtheta = yaw; 
+  Vx_setpoint = pitch;
+  Vy_setpoint = roll ; 
+  omegaZ_setpoint = yaw; 
   // Calcul des vitesses des roues
-  float omega1 = (Vx - Vy - (L + W) * dtheta);
-  float omega2 = (Vx + Vy + (L + W) * dtheta);
-  float omega3 = (Vx + Vy - (L + W) * dtheta);
-  float omega4 = (Vx - Vy + (L + W) * dtheta);
+  float omega1 = (Vx_setpoint - Vy_setpoint - (L + W) * omegaZ_setpoint);
+  float omega2 = (Vx_setpoint + Vy_setpoint + (L + W) * omegaZ_setpoint);
+  float omega3 = (Vx_setpoint + Vy_setpoint - (L + W) * omegaZ_setpoint);
+  float omega4 = (Vx_setpoint - Vy_setpoint + (L + W) * omegaZ_setpoint);
   float maxSpeed = max(max(abs(omega1), abs(omega2)), max(abs(omega3), abs(omega4)));
-  float maxThrottle = max((float)max(abs(Vy),(float)abs(Vx)),(float)abs(dtheta))/100;
+  float maxThrottle = max((float)max(abs(Vy_setpoint),(float)abs(Vx_setpoint)),(float)abs(omegaZ_setpoint))/100;
   // Normaliser les vitesses des roues pour qu'elles se situent entre -255 et 255
   if (maxSpeed > 0) {
     omega1 = omega1 / maxSpeed * 255 * maxThrottle  ;
@@ -474,17 +534,65 @@ void RC_commands(){
   update_commands(omega1,omega2,omega3,omega4);
 }
 
-void kinematics(){
-  Vx     = X_command;
-  Vy     = Y_command;
-  dtheta = Z_command;
+void inverse_kinematics(){
   // Calculer les vitesses des roues
-  float omega1 = (Vx - Vy - (L + W) * dtheta)/wheel_radius;
-  float omega2 = (Vx + Vy + (L + W) * dtheta)/wheel_radius;
-  float omega3 = (Vx + Vy - (L + W) * dtheta)/wheel_radius;
-  float omega4 = (Vx - Vy + (L + W) * dtheta)/wheel_radius;
+  float omega1 = (Vx_corrected - Vy_corrected - (L + W) * omegaZ_corrected)/wheel_radius;
+  float omega2 = (Vx_corrected + Vy_corrected + (L + W) * omegaZ_corrected)/wheel_radius;
+  float omega3 = (Vx_corrected + Vy_corrected - (L + W) * omegaZ_corrected)/wheel_radius;
+  float omega4 = (Vx_corrected - Vy_corrected + (L + W) * omegaZ_corrected)/wheel_radius;
+
+  /*
+  Serial.println();
+  Serial.println(wheel_radius);
+  Serial.println(Vx_corrected);
+  Serial.println(Vy_corrected);
+  Serial.println(omegaZ_corrected);
+  Serial.println(omega1);
+  */
+
   update_commands(omega1,omega2,omega3,omega4);
 }
+
+void forward_kinematics(){
+  // Calculer les vitesses des roues
+  float omega1 = FrontLeft_motor.getRotationSpeed();
+  float omega2 = FrontRight_motor.getRotationSpeed();
+  float omega3 = RearLeft_motor.getRotationSpeed();
+  float omega4 = RearRight_motor.getRotationSpeed();
+  Vx_odo = wheel_radius*(omega1+omega2+omega3+omega4)/4;
+  Vy_odo = wheel_radius*(-omega1+omega2+omega3-omega4)/4;
+  omegaZ_odo = wheel_radius*(-omega1+omega2-omega3+omega4)/(4*(L+W));
+}
+
+
+void update_velocity_PID()
+{       
+    //Serial.println("=============");
+    float d_Vx = Vx_setpoint-Vx_odo;
+    Vx_corrected = Vx_setpoint+ Kp_Vx*d_Vx;
+
+    float d_Vy = Vy_odo-Vy_setpoint;
+    Vy_corrected = Vy_setpoint+ Kp_Vy*d_Vy;
+
+    float d_omegaZ = omegaZ_odo-omegaZ_setpoint;
+    omegaZ_corrected = omegaZ_setpoint+ Kp_omegaZ*d_omegaZ;
+}
+
+void display_fwd_kinematics(){
+  /**/
+  Serial.print(Vx_setpoint);
+  Serial.print(",");
+  Serial.print(Vx_corrected);
+  Serial.print(",");
+  Serial.print(Vx_odo);
+  Serial.println();
+}
+
+void display_motor_speed(){
+  /**/
+  FrontLeft_motor.print_commands();
+}
+
 
 bool single_switch(int value) {
     if (value < 1500) {
