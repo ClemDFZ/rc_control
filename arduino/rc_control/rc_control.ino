@@ -10,7 +10,7 @@
  */
 
 #include <CrsfSerial.h>
-
+#include "Motor.h"
 // Pin interrupters for motor encoder
 #include <PinChangeInterrupt.h>
 #include <PinChangeInterruptBoards.h>
@@ -66,151 +66,12 @@ const float HIGH_SETPOINT_METER_SEC = 0.5;
 
 float lastSetpoint = LOW_SETPOINT_METER_SEC;
 
-class Motor {
-public:
-    // Constructeur pour initialiser les broches du moteur et des encodeurs
-    Motor(int pinDirection1, int pinDirection2, int pinPWM, int pinEncoderA, int pinEncoderB)
-        : _pinDirection1(pinDirection1), _pinDirection2(pinDirection2), _pinPWM(pinPWM), _pinEncoderA(pinEncoderA), _pinEncoderB(pinEncoderB) {
-        // Configurer les broches de direction, PWM, et encodeurs
-        pinMode(_pinDirection1, OUTPUT);
-        pinMode(_pinDirection2, OUTPUT);
-        pinMode(_pinPWM, OUTPUT);
-        pinMode(_pinEncoderA, INPUT_PULLUP);
-        pinMode(_pinEncoderB, INPUT_PULLUP);
-    }
-    void increase_tachy(){
-        int currentEncoderA = digitalRead(_pinEncoderA);
-        int currentEncoderB = digitalRead(_pinEncoderB);
-        if (currentEncoderA != _lastEncoderA) {
-            if (currentEncoderB != currentEncoderA) {
-                //Serial.println("+");
-                _tachy++;
-                _total_tachy++;
-            } else {
-                 //Serial.println("-");
-                _tachy--;
-                _total_tachy--;
-            }
-            //Serial.println(_total_tachy);
-        }
-        _lastEncoderA = currentEncoderA;     
-    }
-
-    void setSpeed(float target_rotation_speed) {_target_rotation_speed = target_rotation_speed;}
-
-    void PID_controller()
-    {       
-        //Serial.println("=============");
-        float d_rpm = _target_rotation_speed-_rotationSpeed;
-        float derivate_d_rpm = d_rpm-_previous_error;
-        _sum_d_rpm += d_rpm;
-        //float I_sat = _sum_d_rpm*_Ki;
-        float I_sat = constrain(_sum_d_rpm*_Ki,-100,100);
-        _pwm_corrected = (_target_rotation_speed/_top_rotation_speed)*255+d_rpm*_Kp + I_sat +_Kd*derivate_d_rpm;
-        _previous_error = d_rpm;
-        //print_commands();
-    }
-
-    void get_rev_counter()
-    {
-      float total_dist = (float)_total_tachy/(float)tachy_per_turn*2*PI;
-      return total_dist;
-    }
-
-    void print_commands()
-    {
-        Serial.print(_target_rotation_speed);
-        Serial.print(",");
-        Serial.println(_rotationSpeed);
-    }
-
-    void send_PID_input()
-    {
-      if ((abs(_previous_pwm-_pwm_corrected))>_MAX_PWM_DIFF){
-      }
-      sendPWM(_pwm_corrected);
-      _previous_pwm = _pwm_corrected;
-    }
-
-    void set_Ki(float Ki){_Ki = Ki;}
-
-    void set_Kp(float  Kp){_Kp = Kp;}
-    
-    void set_Kd(float  Kd){_Kd = Kd;}
-
-    // Méthode pour régler la vitesse et la direction du moteur
-    void sendPWM(int speed) {
-      if (speed != 0) {
-        if (speed >= 0) {
-            // Sens de rotation horaire
-            digitalWrite(_pinDirection1, LOW);
-            digitalWrite(_pinDirection2, HIGH);
-        } else {
-            // Sens de rotation antihoraire
-            digitalWrite(_pinDirection1, HIGH);
-            digitalWrite(_pinDirection2, LOW);
-            speed = -speed;  // Convertir la vitesse en valeur positive pour PWM
-        }
-        analogWrite(_pinPWM, constrain(speed, 0, 255));
-        }
-    }
-
-    // Méthode pour mettre à jour la rotation basée sur l'encodeur
-    void update_rotation_speed() {
-        float nb_tour = (float)_tachy/(float)tachy_per_turn;
-        float round_per_sec = nb_tour/SAMPLING_PERIOD*1000;
-        float rad_per_sec = round_per_sec*2*PI;
-        _rotationSpeed = rad_per_sec;  
-        /*
-        Serial.println(); 
-        Serial.println(_rotationSpeed);
-        Serial.println(_tachy);
-        Serial.println(_pinDirection1);
-        */
-        _tachy = 0; // Tachy remise à 0
-    }
-
-    // Obtenir la vitesse de rotation actuelle
-    float getRotationSpeed() {
-        return _rotationSpeed;
-    }
-
-private:
-    const int tachy_per_turn = 816; //Résolution encodeur
-    const float _top_rotation_speed = 5.5*2*PI; // Vmax moteur, à changer en dynamique dépendemment voltage
-    const int _MAX_PWM_DIFF = 50;
-    int _tachy = 0;
-    long int _total_tachy = 0;
-    float _rotationSpeed = 0.0;
-
-    //Pins attribuées au moteur
-    int _pinDirection1;
-    int _pinDirection2;
-    int _pinPWM;
-    int _pinEncoderA;
-    int _pinEncoderB;
-
-    //PID values
-    float _target_rotation_speed = 0;
-    int _pwm_corrected;
-    int _previous_pwm = 0;
-    float _Kp = 20;
-    float _Ki = 3;
-    float _Kd = 10;
-    float _sum_d_rpm = 0;
-    float _previous_error = 0;
-    
-    // Status pin interrupteur encodeur
-    volatile int _lastEncoderA = LOW;
-    
-};
-
 
 // Création moteurs et attribution PIN
-Motor FrontLeft_motor(52, 53, 4, 62, 63);    // A8 -> 62, A9 -> 63
-Motor FrontRight_motor(50, 51, 5, 64, 65);   // A10 -> 64, A11 -> 65
-Motor RearLeft_motor(26, 27, 6, 66, 67);     // A12 -> 66, A13 -> 67
-Motor RearRight_motor(24, 25, 7, 68, 69);    // A14 -> 68, A15 -> 69
+Motor FrontLeft_motor(52, 53, 4, 62, 63,SAMPLING_PERIOD);    // A8 -> 62, A9 -> 63
+Motor FrontRight_motor(50, 51, 5, 64, 65,SAMPLING_PERIOD);   // A10 -> 64, A11 -> 65
+Motor RearLeft_motor(26, 27, 6, 66, 67,SAMPLING_PERIOD);     // A12 -> 66, A13 -> 67
+Motor RearRight_motor(24, 25, 7, 68, 69,SAMPLING_PERIOD);    // A14 -> 68, A15 -> 69
 Motor* motors_list[4] = { &FrontLeft_motor, &FrontRight_motor, &RearLeft_motor,&RearRight_motor};
 //Motor* motors_list[1] = {&RearRight_motor};
 size_t motors_list_length = sizeof(motors_list) / sizeof(motors_list[0]);
