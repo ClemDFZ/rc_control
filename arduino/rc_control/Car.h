@@ -14,7 +14,16 @@ public:
     void tachy_rear_right();
 
     void update_motor_PID();
+
+    void set_motor_Kp(float Kp);
+    void set_motor_Ki(float Kd);
+    void set_motor_Kd(float Ki);
+
     void update_motors_command();
+
+    void send_PWM(float PWM);
+    void send_PWM(float PWM1,float PWM2,float PWM3,float PWM4);
+
     void update_tachy();
     void inverse_kinematics();
     void forward_kinematics();
@@ -42,14 +51,13 @@ private:
     Motor _FrontLeft_motor,_FrontRight_motor,_RearLeft_motor,_RearRight_motor;
     Motor* _motors_list[4];
     int _motors_list_length = 4;
-
     
-    float _Kp_Vx = 0.3;
+    float _Kp_Vx = 0.0;
     float _Ki_Vx = 0.01;
-    float _Kp_Vy = 0.3;
-    float _Ki_Vy = 0.01;
-    float _Kp_omegaZ = 0.1;
-    float _Ki_omegaZ = 0.001;
+    float _Kp_Vy = 0.0;
+    float _Ki_Vy = 0.00;
+    float _Kp_omegaZ = 0.0;
+    float _Ki_omegaZ = 0.000;
 };
 
 #endif // CAR_H

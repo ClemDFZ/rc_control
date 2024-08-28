@@ -19,10 +19,11 @@
 #include <PinChangeInterruptSettings.h>
 
 #if defined(__AVR_ATmega2560__)
-CrsfSerial crsf(Serial1, CRSF_BAUDRATE);
+CrsfSerial crsf(Serial2, CRSF_BAUDRATE);
 #else
 #error NOT MEGA2560
 #endif
+
 
 
 // Distances inter-moteurs
@@ -33,8 +34,10 @@ float wheel_radius=(97.0/2.0)/1000.0; //wheel radius (meter)
 // Gestion fréquence boucle
 const unsigned long SAMPLING_FREQUENCY = 100; // Fréquence en Hz (nombre de boucles par seconde)
 const unsigned long SAMPLING_PERIOD = 1000 / SAMPLING_FREQUENCY; // Période en millisecondes
+unsigned long lastSAMPLINGTime = 0;
 
-const unsigned long PID_FREQUENCY = 100; // Fréquence en Hz (nombre de boucles par seconde)
+
+const unsigned long PID_FREQUENCY = 10; // Fréquence en Hz (nombre de boucles par seconde)
 const unsigned long PID_PERIOD = 1000 / PID_FREQUENCY; // Période en millisecondes
 unsigned long lastPIDTime = 0;
 
@@ -56,8 +59,10 @@ const float LOW_SETPOINT_ROUND_PER_SEC = 2.0;
 const float HIGH_SETPOINT_RAD_PER_SEC = HIGH_SETPOINT_ROUND_PER_SEC*2*PI;
 const float LOW_SETPOINT_RAD_PER_SEC = LOW_SETPOINT_ROUND_PER_SEC*2*PI;
 
-const float LOW_SETPOINT_METER_SEC = 0.2;
-const float HIGH_SETPOINT_METER_SEC = 0.5;
+const float LOW_SETPOINT_METER_SEC = 0.4;
+const float HIGH_SETPOINT_METER_SEC = 0.8;
+
+int PWM_setpoint = 25;
 
 float lastSetpoint = LOW_SETPOINT_METER_SEC;
 
@@ -81,11 +86,11 @@ float omegaZ_setpoint = 0.0;
 
 bool Serial_Connected = false ;
 
-/**
- * @brief Executed once on power-up or reboot
- */
 void setup() {
-  
+  /*
+  TCCR3B = TCCR3B & 0b11111000 | 0x02;
+  TCCR4B = TCCR4B & 0b11111000 | 0x02;  // Prescaler 8 -> PWM ~3.9 kHz
+  */
   Serial.begin(115200);
   delay(10);
   if (Serial)
@@ -105,7 +110,7 @@ void setup() {
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(64), tachy_front_right, CHANGE);
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(66), tachy_rear_left, CHANGE);
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(68), tachy_rear_right, CHANGE);
-
+  control_mode = "SERIAL";
 }
 
 void tachy_front_left(){
@@ -128,56 +133,72 @@ void loop() {
   if (Serial_Connected){
     readSerial();
   }
-  if(control_mode == "RC") {
-    Mecanum_Car.RC_commands();
-  } 
-  else if (control_mode=="SERIAL")
-  {
-    Mecanum_Car.inverse_kinematics();
-  }
-  update_sensors();
-  Mecanum_Car.forward_kinematics();
+  if  (control_mode=="SERIAL") {
+    //Mecanum_Car.send_PWM(PWM_setpoint,0,0,0);
+    unsigned long now_sampling = micros();
+    if (now_sampling - lastSAMPLINGTime >= SAMPLING_PERIOD*1000.0) {  
+      lastSAMPLINGTime = now_sampling;
+      update_sensors();
   
-  unsigned long now_PID = millis();
-  if (now_PID - lastPIDTime >= PID_PERIOD) {
-      lastPIDTime = now_PID; // Mettre à jour le dernier temps PID
-      // Calcul du PID
-      Mecanum_Car.update_velocity_PID();
       
-  }
-  Mecanum_Car.update_motor_PID();
+      
+      
+      unsigned long now_PID = millis();
+      if (now_PID - lastPIDTime >= PID_PERIOD) {
+          lastPIDTime = now_PID; // Mettre à jour le dernier temps PID
+          // Calcul du PID
+          Mecanum_Car.forward_kinematics();
+          Mecanum_Car.update_velocity_PID();
+          Mecanum_Car.inverse_kinematics();
+      
+      Mecanum_Car.update_motor_PID();
+      Mecanum_Car.update_motors_command();    
+      //Mecanum_Car.display_motor_speed();
+/*
+      Serial.print(PWM_setpoint);
+      Serial.print(",");
+      Mecanum_Car.display_motor_speed(); 
+  */    
+      unsigned long now_display = millis();
+      if (now_display - lastDISPLAYTime >= DISPLAY_PERIOD) {
+        lastDISPLAYTime = now_display;
+        /*
+        Serial.print(0);
+        Serial.print(",");
+        Serial.print(20);
+        Serial.print(",");  
+        */     
+        //Mecanum_Car.display_motor_speed(); 
+        //Mecanum_Car.display_fwd_kinematics();
+      }
 
-
-
-  unsigned long now_display = millis();
-  if (now_display - lastDISPLAYTime >= DISPLAY_PERIOD) {
-    lastDISPLAYTime = now_display;
-    Mecanum_Car.display_motor_speed();
-    //Mecanum_Car.display_fwd_kinematics();
-  }
-
-  unsigned long now_setpoint = millis();
-  if (now_setpoint - lastSetpointTime >= SETPOINT_PERIOD) {
-    update_setpoint(now_setpoint);
-  }
-
-//////////////////////////////////////////////////////////////////////////////////
-  Mecanum_Car.update_motors_command();
-  unsigned long deltaT = millis()-t0;
-  if (deltaT < SAMPLING_PERIOD) {
-    delay(SAMPLING_PERIOD - deltaT);
+      unsigned long now_setpoint = millis();
+      if (now_setpoint - lastSetpointTime >= SETPOINT_PERIOD) {
+        update_setpoint(now_setpoint);
+      }
+      /*
+      unsigned long deltaT = millis()-t0;
+      if (deltaT < SAMPLING_PERIOD) {
+        delay(SAMPLING_PERIOD - deltaT);
+      
+      */
+      }
   }
   }
+}
 
 void update_setpoint(unsigned long now_setpoint){
-    if (lastSetpoint==LOW_SETPOINT_METER_SEC)
-    {
-      lastSetpoint = HIGH_SETPOINT_METER_SEC;
+    if (lastSetpoint>=HIGH_SETPOINT_METER_SEC)
+    {      
+      lastSetpoint = LOW_SETPOINT_METER_SEC;
     }
     else
     {
+      //lastSetpoint += 0.1;
       lastSetpoint = LOW_SETPOINT_METER_SEC;
     }
+    PWM_setpoint++;
+    
     lastSetpointTime = now_setpoint;
     Vx_setpoint = lastSetpoint;
     Mecanum_Car.set_car_setpoints(Vx_setpoint,0.0,0.0);
@@ -233,40 +254,31 @@ void parseString(String str) {
     int spaceIndex = str.indexOf(' ', pIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
     float Kp = str.substring(pIndex + 1, spaceIndex).toFloat();
-    Mecanum_Car.set_Kp(Kp);
-    //Kp_Vx = Kp;
-    /*
-    for (int i=0;i<motors_list_length;i++)
-    {
-      motors_list[i]->set_Kp(Kp);
-    }
-    */
+    //Mecanum_Car.set_Kp(Kp);
+    Mecanum_Car.set_motor_Kp(Kp);
   }
 
   if (iIndex != -1) {
     int spaceIndex = str.indexOf(' ', iIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
     float Ki = str.substring(iIndex + 1, spaceIndex).toFloat();
-    Mecanum_Car.set_Ki(Ki);
-    //Ki_Vx = Ki;
-    /*
-    for (int i=0;i<motors_list_length;i++)
-      {
-        motors_list[i]->set_Ki(Ki);
-      }
-      */
+    //Mecanum_Car.set_Ki(Ki);
+    Mecanum_Car.set_motor_Ki(Ki);
   }
 
   if (dIndex != -1) {
     int spaceIndex = str.indexOf(' ', dIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
     float Kd = str.substring(dIndex + 1, spaceIndex).toFloat();
+    Mecanum_Car.set_motor_Kd(Kd);
+
   }
 
 
   }
 
 void RC_callback() {
+  
   throttle = crsf.getChannel(1);
   throttle = constrain(map(throttle,1000,2000,-100,100), -100, 100);
   roll = crsf.getChannel(2);
@@ -285,6 +297,47 @@ void RC_callback() {
   LB= double_switch(crsf.getChannel(7));
   RB= double_switch(crsf.getChannel(8));
   LP= crsf.getChannel(9);  
+
+/*
+  Serial.print(throttle);
+  Serial.print(",");
+  Serial.print(roll);
+  Serial.print(",");  
+  Serial.print(pitch);
+  Serial.print(",");  
+  Serial.print(yaw);
+  Serial.print(",");  
+  Serial.print(LT);  
+  Serial.print(",");  
+  Serial.print(RT);  
+  Serial.print(",");  
+  Serial.print(LB);
+  Serial.print(",");  
+  Serial.print(RB);
+  Serial.print(",");  
+  Serial.print(LP);
+  Serial.println();
+*/
+  control_mode="SERIAL";
+
+  if (control_mode == "RC")
+    {
+    float omega1 = (pitch - roll - (L + W) * yaw);
+    float omega2 = (pitch + roll + (L + W) * yaw);
+    float omega3 = (pitch + roll - (L + W) * yaw);
+    float omega4 = (pitch - roll + (L + W) * yaw);
+    float maxSpeed = max(max(abs(omega1), abs(omega2)), max(abs(omega3), abs(omega4)));
+    float maxThrottle = max((float)max(abs(roll),(float)abs(pitch)),(float)abs(yaw))/100;
+    // Normaliser les vitesses des roues pour qu'elles se situent entre -255 et 255
+    if (maxSpeed > 0) 
+      {
+      float PWM1 = omega1 / maxSpeed * 255 * maxThrottle  ;
+      float PWM2 = omega2 / maxSpeed * 255 * maxThrottle  ;
+      float PWM3 = omega3 / maxSpeed * 255 * maxThrottle  ;
+      float PWM4 = omega4 / maxSpeed * 255 * maxThrottle  ;
+      //Mecanum_Car.send_PWM(PWM1,PWM2,PWM3,PWM4);
+      }
+    } 
 }
 
 bool single_switch(int value) {

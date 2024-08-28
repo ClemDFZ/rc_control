@@ -13,7 +13,7 @@ public:
     void print_commands();
 
     void send_PID_input();
-
+    
     void set_Ki(float Ki){_Ki = Ki;}
 
     void set_Kp(float  Kp){_Kp = Kp;}
@@ -27,7 +27,10 @@ public:
     void update_rotation_speed();
     // Obtenir la vitesse de rotation actuelle
     float getRotationSpeed();
+    float get_averaged_speed();
+
 private:
+    float linear_pwm_command(float target_radpersec);
     unsigned long _SAMPLING_PERIOD;
     const int tachy_per_turn = 816; //Résolution encodeur
     const float _top_rotation_speed = 5.5*2*PI; // Vmax moteur, à changer en dynamique dépendemment voltage
@@ -43,16 +46,26 @@ private:
     int _pinEncoderA;
     int _pinEncoderB;
 
+    static const int _SPEED_MEAS_AVG_MAX = 10;
+    float _rot_speed_list[_SPEED_MEAS_AVG_MAX];
+    unsigned int _rot_meas_cpt = 0;
+    
     //PID values
+    unsigned long _last_t_tachy = micros();
+    float _tachy_to_rpm_calculus = 7.699982;
     float _target_rotation_speed = 0;
     int _pwm_corrected;
     int _previous_pwm = 0;
     float _Kp = 20;
     float _Ki = 3;
-    float _Kd = 10;
+    float _Kd = 5;
     float _sum_d_rpm = 0;
     float _previous_error = 0;
-    
+    float _last_avg_target = 0;
+    float _pwm_sum ;
+    int _pwm_count;
+    float _error_threshold = 1.5;
+    const int _avg_window_size = 5;
     // Status pin interrupteur encodeur
     volatile int _lastEncoderA = LOW;
     

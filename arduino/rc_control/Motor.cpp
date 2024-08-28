@@ -37,9 +37,67 @@ void Motor::PID_controller()
 	float d_rpm = _target_rotation_speed-_rotationSpeed;
 	float derivate_d_rpm = d_rpm-_previous_error;
 	_sum_d_rpm += d_rpm;
+	if ((d_rpm > 0 && _previous_error < 0) || (d_rpm < 0 && _previous_error > 0)) {
+    	_sum_d_rpm = 0;}
 	//float I_sat = _sum_d_rpm*_Ki;
-	float I_sat = constrain(_sum_d_rpm*_Ki,-100,100);
-	_pwm_corrected = (_target_rotation_speed/_top_rotation_speed)*255+d_rpm*_Kp + I_sat +_Kd*derivate_d_rpm;
+
+
+	// Si le régime permanent est atteint (erreur stable et faible)
+	float target_pwm = linear_pwm_command(_target_rotation_speed);
+			
+	/*
+	if (_last_avg_target != 0){float target_pwm=_last_avg_target;}
+	else{}
+	// Calculer la moyenne après un certain nombre de cycles
+	if ((_pwm_count >= _avg_window_size) && (_last_avg_target != 0)){
+		Serial.print("Estimate: ");
+		Serial.println(_pwm_sum / _pwm_count);
+		_last_avg_target = _pwm_sum / _pwm_count;
+		_pwm_sum = 0;
+		_pwm_count = 0;
+	}
+	else{
+		if (abs(d_rpm) < _error_threshold) {
+				// Ajouter la consigne à la moyenne
+				_pwm_sum += _pwm_corrected;
+				_pwm_count++;
+			} 
+		else{
+			//_pwm_sum = 0;
+			//_pwm_count = 0;
+		}
+	}
+	*/
+	
+	//float target_pwm = linear_pwm_command(_target_rotation_speed);
+	float P = d_rpm*_Kp;
+	float I = constrain(_Ki*_sum_d_rpm,-50.0,50.0);
+	float D = -_Kd*derivate_d_rpm;
+
+	_pwm_corrected = target_pwm+P+I+D;
+	_pwm_corrected = constrain(_pwm_corrected, -255, 255);
+
+
+
+
+
+
+
+
+
+	/* 
+	Serial.print(P);
+	Serial.print(",");
+	Serial.print(I);
+	Serial.print(",");	
+	Serial.print(D);
+	Serial.print(",");
+	Serial.print(target_pwm);
+	Serial.print(",");
+	Serial.print(_pwm_corrected);
+	Serial.print(",");
+	//Serial.println();
+	*/
 	_previous_error = d_rpm;
 	//print_commands();
 }
@@ -57,6 +115,11 @@ void Motor::print_commands()
 	Serial.println(_rotationSpeed);
 }
 
+float Motor::linear_pwm_command(float target_radpersec){
+	float target_pwm = 0.3035*target_radpersec*target_radpersec - 1.9821*target_radpersec + 53.042;
+	return target_pwm;
+}
+
 void Motor::send_PID_input()
 {
 	if ((abs(_previous_pwm-_pwm_corrected))>_MAX_PWM_DIFF){
@@ -64,6 +127,8 @@ void Motor::send_PID_input()
 	sendPWM(_pwm_corrected);
 	_previous_pwm = _pwm_corrected;
 }
+
+
 
 // Méthode pour régler la vitesse et la direction du moteur
 void Motor::sendPWM(int speed) {
@@ -84,20 +149,44 @@ void Motor::sendPWM(int speed) {
 
 // Méthode pour mettre à jour la rotation basée sur l'encodeur
 void Motor::update_rotation_speed() {
-	float nb_tour = (float)_tachy/(float)tachy_per_turn;
-	float round_per_sec = nb_tour/_SAMPLING_PERIOD*1000;
-	float rad_per_sec = round_per_sec*2*PI;
-	_rotationSpeed = rad_per_sec;  
+	unsigned long now = micros();
+	_rotationSpeed = (float)_tachy/(now-_last_t_tachy)*1000.0*_tachy_to_rpm_calculus;
 	/*
-	Serial.println(); 
-	Serial.println(_rotationSpeed);
+	
+	Serial.print(_rotationSpeed);
+	Serial.print(",");
 	Serial.println(_tachy);
-	Serial.println(_pinDirection1);
 	*/
+	_last_t_tachy = now;
 	_tachy = 0; // Tachy remise à 0
+
+	if ((_rot_meas_cpt)<_SPEED_MEAS_AVG_MAX){
+		_rot_speed_list[_rot_meas_cpt] = _rotationSpeed;
+		_rot_meas_cpt+=1;
+	}
+	
 }
 
 // Obtenir la vitesse de rotation actuelle
 float Motor::getRotationSpeed() {
 	return _rotationSpeed;
 }
+
+
+float Motor::get_averaged_speed(){
+	float avg_speed = 0.0;
+	for (int x=0;x<_rot_meas_cpt;x++)
+	{	
+		float meas_speed = _rot_speed_list[x];
+		avg_speed+=meas_speed;
+		Serial.print(meas_speed);
+		Serial.print(",");
+		_rot_speed_list[x] = 0.0;
+	}
+
+	avg_speed = avg_speed/(float)_rot_meas_cpt;
+	Serial.println(avg_speed);
+	_rot_meas_cpt = 0;
+	return avg_speed;
+	}
+	
