@@ -25,6 +25,36 @@ CrsfSerial crsf(Serial2, CRSF_BAUDRATE);
 #endif
 
 
+#include "Simple_MPU6050.h"
+#include "MPU_handler.cpp"
+#define MPU6050_ADDRESS_AD0_LOW     0x68 // address pin low (GND), default for InvenSense evaluation board
+#define MPU6050_ADDRESS_AD0_HIGH    0x69 // address pin high (VCC)
+#define MPU6050_DEFAULT_ADDRESS     MPU6050_ADDRESS_AD0_LOW
+
+Simple_MPU6050 mpu;
+MPU_handler handler;
+
+float get_yaw(int32_t *quat, uint16_t SpamDelay = 100) {
+  Quaternion q;
+  float euler[3];         // [psi, theta, phi]    Euler angle container
+  float eulerDEG[3];         // [psi, theta, phi]    Euler angle container
+  //spamtimer(SpamDelay) {// non blocking delay before printing again. This skips the following code when delay time (ms) hasn't been met
+  mpu.GetQuaternion(&q, quat);
+  mpu.GetEuler(euler, &q);
+  mpu.ConvertToDegrees(euler, eulerDEG);
+  //Serial.println(eulerDEG[0]);
+  return eulerDEG[0];
+  //}
+}
+
+void update_handler (int16_t *gyro, int16_t *accel, int32_t *quat) {
+  uint8_t Spam_Delay = 100; // Built in Blink without delay timer preventing Serial.print SPAM
+  float yaw = get_yaw(quat, Spam_Delay);
+  handler.update_measure(yaw);
+}
+
+
+
 
 // Distances inter-moteurs
 float L = 0.25; // wheels length distance
@@ -104,7 +134,12 @@ void setup() {
   */
   crsf.begin();
   crsf.onPacketChannels = &RC_callback;
-
+  mpu.begin();
+  mpu.Set_DMP_Output_Rate_Hz(100);           // Set the DMP output rate from 200Hz to 5 Minutes.
+  mpu.SetAddress(MPU6050_DEFAULT_ADDRESS);
+  mpu.CalibrateMPU();
+  mpu.load_DMP_Image();// Does it all for you with Calibration
+  mpu.on_FIFO(update_handler);
   // Initialiser la pin d'interruption pour Encoder A
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(62), tachy_front_left, CHANGE);
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(64), tachy_front_right, CHANGE);
@@ -130,6 +165,7 @@ void tachy_rear_right(){
 void loop() { 
   unsigned long t0 = millis();
   crsf.loop(); 
+  mpu.dmp_read_fifo();// Must be in loop  Interrupt pin must be connected
   if (Serial_Connected){
     readSerial();
   }
@@ -150,7 +186,8 @@ void loop() {
           Mecanum_Car.forward_kinematics();
           Mecanum_Car.update_velocity_PID();
           Mecanum_Car.inverse_kinematics();
-      
+          handler.get_averaged_yaw();
+          
       Mecanum_Car.update_motor_PID();
       Mecanum_Car.update_motors_command();    
       //Mecanum_Car.display_motor_speed();
@@ -360,4 +397,14 @@ int double_switch(int value) {
         // Valeur par défaut si la valeur n'est pas parmi celles attendues
         return -1;  // Ou une autre valeur d'erreur appropriée
     }
+}
+
+
+void mpu_setup(Simple_MPU6050 mpu){
+  mpu.begin();
+  mpu.Set_DMP_Output_Rate_Hz(100);           // Set the DMP output rate from 200Hz to 5 Minutes.
+  mpu.SetAddress(MPU6050_DEFAULT_ADDRESS);
+  mpu.CalibrateMPU();
+  mpu.load_DMP_Image();// Does it all for you with Calibration
+  mpu.on_FIFO(update_handler);
 }

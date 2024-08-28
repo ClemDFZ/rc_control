@@ -179,13 +179,13 @@ float Motor::get_averaged_speed(){
 	{	
 		float meas_speed = _rot_speed_list[x];
 		avg_speed+=meas_speed;
-		Serial.print(meas_speed);
-		Serial.print(",");
+		//Serial.print(meas_speed);
+		//Serial.print(",");
 		_rot_speed_list[x] = 0.0;
 	}
 
 	avg_speed = avg_speed/(float)_rot_meas_cpt;
-	Serial.println(avg_speed);
+	//Serial.println(avg_speed);
 	_rot_meas_cpt = 0;
 	return avg_speed;
 	}
