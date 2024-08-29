@@ -90,9 +90,9 @@ const float HIGH_SETPOINT_RAD_PER_SEC = HIGH_SETPOINT_ROUND_PER_SEC*2*PI;
 const float LOW_SETPOINT_RAD_PER_SEC = LOW_SETPOINT_ROUND_PER_SEC*2*PI;
 
 const float LOW_SETPOINT_METER_SEC = 0.3;
-const float HIGH_SETPOINT_METER_SEC = 0.5;
+const float HIGH_SETPOINT_METER_SEC = 1.0;
 
-int PWM_setpoint = 25;
+int PWM_setpoint = 0;
 
 float lastSetpoint = LOW_SETPOINT_METER_SEC;
 
@@ -146,6 +146,7 @@ void setup() {
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(66), tachy_rear_left, CHANGE);
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(68), tachy_rear_right, CHANGE);
   control_mode = "SERIAL";
+  digitalWrite(52,HIGH); // LED to know calib is done
 }
 
 void tachy_front_left(){
@@ -192,11 +193,7 @@ void loop() {
       Mecanum_Car.update_motor_PID();
       Mecanum_Car.update_motors_command();    
       //Mecanum_Car.display_motor_speed();
-/*
-      Serial.print(PWM_setpoint);
-      Serial.print(",");
-      Mecanum_Car.display_motor_speed(); 
-  */    
+
       unsigned long now_display = millis();
       if (now_display - lastDISPLAYTime >= DISPLAY_PERIOD) {
         lastDISPLAYTime = now_display;
@@ -206,13 +203,20 @@ void loop() {
         Serial.print(20);
         Serial.print(",");  
         */     
-        //Mecanum_Car.display_motor_speed(); 
+        Mecanum_Car.display_motor_speed(); 
         //Mecanum_Car.display_fwd_kinematics();
       }
 
       unsigned long now_setpoint = millis();
       if (now_setpoint - lastSetpointTime >= SETPOINT_PERIOD) {
-        update_setpoint(now_setpoint);
+        lastSetpointTime = now_setpoint;
+        update_setpoint();
+        /*
+      Serial.print(PWM_setpoint);
+      Serial.print(",");
+      
+      Mecanum_Car.display_motor_speed(); 
+      */
       }
       /*
       unsigned long deltaT = millis()-t0;
@@ -225,7 +229,7 @@ void loop() {
   }
 }
 
-void update_setpoint(unsigned long now_setpoint){
+void update_setpoint(){
     if (lastSetpoint>=HIGH_SETPOINT_METER_SEC)
     {      
       lastSetpoint = LOW_SETPOINT_METER_SEC;
@@ -235,9 +239,7 @@ void update_setpoint(unsigned long now_setpoint){
       //lastSetpoint += 0.1;
       lastSetpoint = HIGH_SETPOINT_METER_SEC;
     }
-    PWM_setpoint++;
-    
-    lastSetpointTime = now_setpoint;
+    PWM_setpoint++; 
     Vx_setpoint = lastSetpoint;
     Mecanum_Car.set_car_setpoints(Vx_setpoint,0.0,0.0);
 }

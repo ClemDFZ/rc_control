@@ -56,9 +56,9 @@ private:
     float _target_rotation_speed = 0;
     int _pwm_corrected;
     int _previous_pwm = 0;
-    float _Kp = 25;
-    float _Ki = 3;
-    float _Kd = 5;
+    float _Kp = 9;
+    float _Ki = 0.1;
+    float _Kd = 3;
     float _sum_d_rpm = 0;
     float _previous_error = 0;
     float _last_avg_target = 0;

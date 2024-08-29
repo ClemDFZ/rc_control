@@ -43,10 +43,6 @@ void Motor::PID_controller()
 	if (!isnan(d_rpm)) {
 		_sum_d_rpm += d_rpm;
 	}
-	
-	Serial.print(d_rpm);
-	Serial.print(",");
-	Serial.println(_sum_d_rpm);
 
 	if ((d_rpm > 0 && _previous_error < 0) || (d_rpm < 0 && _previous_error > 0)) {
     	_sum_d_rpm = 0;}
@@ -120,7 +116,7 @@ void Motor::print_commands()
 }
 
 float Motor::linear_pwm_command(float target_radpersec){
-	float target_pwm = 0.3035*target_radpersec*target_radpersec - 1.9821*target_radpersec + 53.042;
+	float target_pwm = 0.0013*pow(target_radpersec,4) - 0.0617*pow(target_radpersec,3) + 1.0092*pow(target_radpersec,2) - 3.3109*target_radpersec + 32.435;
 	return target_pwm;
 }
 
