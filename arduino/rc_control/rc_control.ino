@@ -32,7 +32,7 @@ CrsfSerial crsf(Serial2, CRSF_BAUDRATE);
 #define MPU6050_DEFAULT_ADDRESS     MPU6050_ADDRESS_AD0_LOW
 
 Simple_MPU6050 mpu;
-MPU_handler handler;
+MPU_handler mpu_handler;
 
 float get_yaw(int32_t *quat, uint16_t SpamDelay = 100) {
   Quaternion q;
@@ -50,7 +50,7 @@ float get_yaw(int32_t *quat, uint16_t SpamDelay = 100) {
 void update_handler (int16_t *gyro, int16_t *accel, int32_t *quat) {
   uint8_t Spam_Delay = 100; // Built in Blink without delay timer preventing Serial.print SPAM
   float yaw = get_yaw(quat, Spam_Delay);
-  handler.update_measure(yaw);
+  mpu_handler.update_measure(yaw);
 }
 
 
@@ -89,8 +89,8 @@ const float LOW_SETPOINT_ROUND_PER_SEC = 2.0;
 const float HIGH_SETPOINT_RAD_PER_SEC = HIGH_SETPOINT_ROUND_PER_SEC*2*PI;
 const float LOW_SETPOINT_RAD_PER_SEC = LOW_SETPOINT_ROUND_PER_SEC*2*PI;
 
-const float LOW_SETPOINT_METER_SEC = 0.4;
-const float HIGH_SETPOINT_METER_SEC = 0.8;
+const float LOW_SETPOINT_METER_SEC = 0.3;
+const float HIGH_SETPOINT_METER_SEC = 0.5;
 
 int PWM_setpoint = 25;
 
@@ -183,10 +183,11 @@ void loop() {
       if (now_PID - lastPIDTime >= PID_PERIOD) {
           lastPIDTime = now_PID; // Mettre à jour le dernier temps PID
           // Calcul du PID
-          Mecanum_Car.forward_kinematics();
+          float avg_yaw = mpu_handler.get_averaged_speed();
+          Mecanum_Car.forward_kinematics(avg_yaw);       
           Mecanum_Car.update_velocity_PID();
           Mecanum_Car.inverse_kinematics();
-          handler.get_averaged_yaw();
+          
           
       Mecanum_Car.update_motor_PID();
       Mecanum_Car.update_motors_command();    
@@ -232,7 +233,7 @@ void update_setpoint(unsigned long now_setpoint){
     else
     {
       //lastSetpoint += 0.1;
-      lastSetpoint = LOW_SETPOINT_METER_SEC;
+      lastSetpoint = HIGH_SETPOINT_METER_SEC;
     }
     PWM_setpoint++;
     

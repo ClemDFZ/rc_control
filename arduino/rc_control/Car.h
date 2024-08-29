@@ -26,7 +26,7 @@ public:
 
     void update_tachy();
     void inverse_kinematics();
-    void forward_kinematics();
+    void forward_kinematics(float avg_yaw);
     void display_fwd_kinematics();
     void display_motor_speed();
     void update_velocity_PID();
@@ -53,10 +53,10 @@ private:
     int _motors_list_length = 4;
     
     float _Kp_Vx = 0.0;
-    float _Ki_Vx = 0.01;
+    float _Ki_Vx = 0.00;
     float _Kp_Vy = 0.0;
     float _Ki_Vy = 0.00;
-    float _Kp_omegaZ = 0.0;
+    float _Kp_omegaZ = 0;
     float _Ki_omegaZ = 0.000;
 };
 

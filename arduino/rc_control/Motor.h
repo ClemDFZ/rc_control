@@ -56,7 +56,7 @@ private:
     float _target_rotation_speed = 0;
     int _pwm_corrected;
     int _previous_pwm = 0;
-    float _Kp = 20;
+    float _Kp = 25;
     float _Ki = 3;
     float _Kd = 5;
     float _sum_d_rpm = 0;

@@ -34,14 +34,24 @@ void Motor::increase_tachy(){
 void Motor::PID_controller()
 {       
 	//Serial.println("=============");
+
+
+
+
 	float d_rpm = _target_rotation_speed-_rotationSpeed;
 	float derivate_d_rpm = d_rpm-_previous_error;
-	_sum_d_rpm += d_rpm;
+	if (!isnan(d_rpm)) {
+		_sum_d_rpm += d_rpm;
+	}
+	
+	Serial.print(d_rpm);
+	Serial.print(",");
+	Serial.println(_sum_d_rpm);
+
 	if ((d_rpm > 0 && _previous_error < 0) || (d_rpm < 0 && _previous_error > 0)) {
     	_sum_d_rpm = 0;}
+
 	//float I_sat = _sum_d_rpm*_Ki;
-
-
 	// Si le régime permanent est atteint (erreur stable et faible)
 	float target_pwm = linear_pwm_command(_target_rotation_speed);
 			
@@ -71,18 +81,11 @@ void Motor::PID_controller()
 	
 	//float target_pwm = linear_pwm_command(_target_rotation_speed);
 	float P = d_rpm*_Kp;
-	float I = constrain(_Ki*_sum_d_rpm,-50.0,50.0);
+	float I = constrain(_Ki*_sum_d_rpm,-50,50);
 	float D = -_Kd*derivate_d_rpm;
 
 	_pwm_corrected = target_pwm+P+I+D;
 	_pwm_corrected = constrain(_pwm_corrected, -255, 255);
-
-
-
-
-
-
-
 
 
 	/* 
@@ -92,11 +95,12 @@ void Motor::PID_controller()
 	Serial.print(",");	
 	Serial.print(D);
 	Serial.print(",");
+	
 	Serial.print(target_pwm);
 	Serial.print(",");
 	Serial.print(_pwm_corrected);
 	Serial.print(",");
-	//Serial.println();
+	Serial.println();
 	*/
 	_previous_error = d_rpm;
 	//print_commands();

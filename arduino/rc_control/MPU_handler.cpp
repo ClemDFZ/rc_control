@@ -20,20 +20,44 @@ class MPU_handler{
       {	
         float meas_yaw = _yaw_speed_list[x];
         avg_yaw+=meas_yaw;
-        Serial.print(meas_yaw);
-        Serial.print(",");
+        //Serial.print(meas_yaw);
+        //Serial.print(",");
         _yaw_speed_list[x] = 0.0;
       }
 
     avg_yaw = avg_yaw/(float)_yaw_meas_cpt;
-    Serial.println(avg_yaw);
+    //Serial.println(avg_yaw);
     _yaw_meas_cpt = 0;
+
     return avg_yaw;
 	}
+
+    float get_averaged_speed()
+    {
+        float yaw = get_averaged_yaw();
+        unsigned long now = micros();
+        unsigned long dT = now-_last_measure_time;
+        float dYaw = yaw-_last_avg_yaw;
+        float speed = dYaw/dT*1000000.0*(PI/180);
+        /*
+        Serial.print(dYaw);
+        Serial.print(",");
+        Serial.print(dT);
+        Serial.print(",");
+        Serial.println(speed);
+        */
+        _last_avg_yaw = yaw;
+        _last_measure_time = now;
+        return speed;
+    }
+
+
 
   private:
     static const unsigned int _YAW_MEAS_AVG_MAX=10;
     float _yaw_speed_list[_YAW_MEAS_AVG_MAX];
     unsigned int _yaw_meas_cpt=0;
     float _last_measure=0;
+    unsigned long _last_measure_time = 0;
+    float _last_avg_yaw = 0;
 };
