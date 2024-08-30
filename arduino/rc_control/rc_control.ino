@@ -89,15 +89,15 @@ const float LOW_SETPOINT_ROUND_PER_SEC = 2.0;
 const float HIGH_SETPOINT_RAD_PER_SEC = HIGH_SETPOINT_ROUND_PER_SEC*2*PI;
 const float LOW_SETPOINT_RAD_PER_SEC = LOW_SETPOINT_ROUND_PER_SEC*2*PI;
 
-const float LOW_SETPOINT_METER_SEC = 0.3;
-const float HIGH_SETPOINT_METER_SEC = 1.0;
+const float LOW_SETPOINT_METER_SEC = 0.5;
+const float HIGH_SETPOINT_METER_SEC = 0.5;
 
 int PWM_setpoint = 0;
 
 float lastSetpoint = LOW_SETPOINT_METER_SEC;
 
 
-Car Mecanum_Car(SAMPLING_PERIOD);
+Car Mecanum_Car(&mpu_handler,SAMPLING_PERIOD);
 
 // Gestion RC
 void RC_callback();
@@ -112,6 +112,7 @@ float Vx_setpoint = 0.0;
 float Vy_setpoint = 0.0;
 float omegaZ_setpoint = 0.0;
 
+bool is_Armed = true;
 
 
 bool Serial_Connected = false ;
@@ -170,28 +171,29 @@ void loop() {
   if (Serial_Connected){
     readSerial();
   }
+  unsigned long now_sampling = micros();
+  if (now_sampling - lastSAMPLINGTime >= SAMPLING_PERIOD*1000.0) {  
+      lastSAMPLINGTime = now_sampling;
+      update_sensors(); 
   if  (control_mode=="SERIAL") {
     //Mecanum_Car.send_PWM(PWM_setpoint,0,0,0);
-    unsigned long now_sampling = micros();
-    if (now_sampling - lastSAMPLINGTime >= SAMPLING_PERIOD*1000.0) {  
-      lastSAMPLINGTime = now_sampling;
-      update_sensors();
-  
-      
-      
       
       unsigned long now_PID = millis();
       if (now_PID - lastPIDTime >= PID_PERIOD) {
           lastPIDTime = now_PID; // Mettre à jour le dernier temps PID
           // Calcul du PID
-          float avg_yaw = mpu_handler.get_averaged_speed();
-          Mecanum_Car.forward_kinematics(avg_yaw);       
+          Mecanum_Car.forward_kinematics();       
           Mecanum_Car.update_velocity_PID();
           Mecanum_Car.inverse_kinematics();
           
           
       Mecanum_Car.update_motor_PID();
-      Mecanum_Car.update_motors_command();    
+      if (is_Armed){
+       Mecanum_Car.update_motors_command();    
+      }
+      else{
+        Mecanum_Car.send_PWM(0,0,0,0);
+      }
       //Mecanum_Car.display_motor_speed();
 
       unsigned long now_display = millis();
@@ -203,7 +205,7 @@ void loop() {
         Serial.print(20);
         Serial.print(",");  
         */     
-        Mecanum_Car.display_motor_speed(); 
+        //Mecanum_Car.display_motor_speed(); 
         //Mecanum_Car.display_fwd_kinematics();
       }
 
@@ -242,6 +244,8 @@ void update_setpoint(){
     PWM_setpoint++; 
     Vx_setpoint = lastSetpoint;
     Mecanum_Car.set_car_setpoints(Vx_setpoint,0.0,0.0);
+    //Mecanum_Car.set_car_setpoints(0.0,0.0,PI/2);
+
 }
 
 void update_sensors(){
@@ -328,6 +332,12 @@ void RC_callback() {
   yaw= crsf.getChannel(4);
   yaw = -constrain(map(yaw,1000,2000,-100,100), -100, 100);  
   LT= single_switch(crsf.getChannel(5));
+  if (LT){
+    is_Armed = true;
+  }
+  else{
+    is_Armed = false;
+  }
   if (RT){
     control_mode="RC";
   }else{
@@ -338,6 +348,10 @@ void RC_callback() {
   RB= double_switch(crsf.getChannel(8));
   LP= crsf.getChannel(9);  
 
+
+
+  float Kp = (constrain(LP,1000,2000)-1000.0)/2/1000.0;
+  Mecanum_Car.set_Kp_yaw(Kp);
 /*
   Serial.print(throttle);
   Serial.print(",");
@@ -358,9 +372,9 @@ void RC_callback() {
   Serial.print(LP);
   Serial.println();
 */
-  control_mode="SERIAL";
-
-  if (control_mode == "RC")
+  //control_mode="SERIAL";
+  
+  if ((control_mode == "RC") && is_Armed)
     {
     float omega1 = (pitch - roll - (L + W) * yaw);
     float omega2 = (pitch + roll + (L + W) * yaw);
@@ -375,7 +389,9 @@ void RC_callback() {
       float PWM2 = omega2 / maxSpeed * 255 * maxThrottle  ;
       float PWM3 = omega3 / maxSpeed * 255 * maxThrottle  ;
       float PWM4 = omega4 / maxSpeed * 255 * maxThrottle  ;
-      //Mecanum_Car.send_PWM(PWM1,PWM2,PWM3,PWM4);
+      Mecanum_Car.send_PWM(PWM1,PWM2,PWM3,PWM4);
+      Mecanum_Car.display_motor_speed();
+      //Mecanum_Car.display_yaw();
       }
     } 
 }

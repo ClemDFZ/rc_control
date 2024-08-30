@@ -1,11 +1,14 @@
 #include <Arduino.h>
 #include "Car.h"
 
-Car::Car(unsigned long SAMPLING_PERIOD ) :
+
+
+Car::Car(MPU_handler* mpu_handler,unsigned long SAMPLING_PERIOD ) :
 	_FrontLeft_motor(50, 51, 5, 62, 63,SAMPLING_PERIOD),    // A8 -> 62, A9 -> 63
 	_FrontRight_motor(48, 49, 6, 64, 65,SAMPLING_PERIOD),   // A10 -> 64, A11 -> 65
 	_RearLeft_motor(26, 27, 7, 66, 67,SAMPLING_PERIOD),     // A12 -> 66, A13 -> 67
-	_RearRight_motor(24, 25, 8, 68, 69,SAMPLING_PERIOD)   // A14 -> 68, A15 -> 69
+	_RearRight_motor(24, 25, 8, 68, 69,SAMPLING_PERIOD),  // A14 -> 68, A15 -> 69
+  _mpu_handler(mpu_handler)
 	{
 	_motors_list[0] = &_FrontLeft_motor;
 	_motors_list[1] = &_FrontRight_motor;
@@ -35,13 +38,14 @@ void Car::tachy_rear_right()
 
 void Car::update_motor_PID()
 {
+/*
   _FrontLeft_motor.PID_controller();
-  /*
+  */
   for (int i=0;i<_motors_list_length;i++)
   {
     _motors_list[i]->PID_controller();
   }
-  */
+  
 }
 
 void Car::send_PWM(float PWM)
@@ -85,7 +89,7 @@ void Car::update_tachy()
   }
 }
 
-void Car::forward_kinematics(float avg_yaw){
+void Car::forward_kinematics(){
   // Calculer les vitesses des roues
   float omega1 = _FrontLeft_motor.get_averaged_speed();
   float omega2 = _FrontRight_motor.get_averaged_speed();
@@ -96,14 +100,18 @@ void Car::forward_kinematics(float avg_yaw){
   _Vx_odo = _wheel_radius*(omega1+omega2+omega3+omega4)/4;
   _Vy_odo = _wheel_radius*(-omega1+omega2+omega3-omega4)/4;
   //_omegaZ_odo = _wheel_radius*(-omega1+omega2-omega3+omega4)/(4*(_L+_W));
-  _omegaZ_odo=avg_yaw;
+  _omegaZ_odo=-_mpu_handler->get_averaged_speed();
+  _yaw = -_mpu_handler->get_last_measure();
 
-  /*
+  //Serial.println(_yaw);
+  /**/
+  Serial.print(_Vx_odo);
+  Serial.print(",");
+  Serial.print(_Vy_odo);
+  Serial.print(",");
   Serial.print(_omegaZ_odo);
   Serial.print(",");
-  Serial.print(avg_yaw);
-  Serial.print(",");
-*/
+  Serial.println(_yaw);
   
 }
 
@@ -122,14 +130,30 @@ void Car::update_velocity_PID()
     float d_Vy = _Vy_setpoint-_Vy_odo;
     _Vy_corrected = _Vy_setpoint+ _Kp_Vy*d_Vy;
    
+    if (_omegaZ_setpoint!= 0){
+    _target_yaw=0;
     float d_omegaZ = _omegaZ_setpoint-_omegaZ_odo;
     _omegaZ_corrected = _omegaZ_setpoint+ _Kp_omegaZ*d_omegaZ;
+    }
 
-/*
+    else{
+      float d_yaw = _target_yaw-_yaw;
+      _omegaZ_corrected = _Kp_yaw*d_yaw;
+      //Serial.println(_omegaZ_corrected);
+    }
+
+/*  
+    Serial.print(_Vx_setpoint);
+    Serial.print(",");
+    Serial.print(d_Vx);
+    Serial.print(",");
+    Serial.print(_Vx_corrected);
+    Serial.print(",");
+
     Serial.print(d_omegaZ);
     Serial.print(",");
     Serial.println(_omegaZ_corrected);
- */   
+  */ 
 }
 
 void Car::set_motor_Kp(float Kp){ 
@@ -164,18 +188,31 @@ void Car::set_motor_speed(float omega1,float omega2,float omega3,float omega4){
 
 void Car::inverse_kinematics(){
   // Calculer les vitesses des roues
+  /*
+  Serial.print(_Vx_corrected);
+  Serial.print(",");
+  Serial.print(_Vy_corrected);
+  Serial.print(",");
+  Serial.print(_omegaZ_corrected);
+  Serial.println();
+*/
+
   float omega1 = (_Vx_corrected - _Vy_corrected - (_L + _W) * _omegaZ_corrected)/_wheel_radius;
   float omega2 = (_Vx_corrected + _Vy_corrected + (_L + _W) * _omegaZ_corrected)/_wheel_radius;
   float omega3 = (_Vx_corrected + _Vy_corrected - (_L + _W) * _omegaZ_corrected)/_wheel_radius;
   float omega4 = (_Vx_corrected - _Vy_corrected + (_L + _W) * _omegaZ_corrected)/_wheel_radius;
 
 
-/* 
+/*
   Serial.print(omega1);
   Serial.print(",");
-  Serial.print(_Vx_corrected);
+  Serial.print(omega2);
+  Serial.print(",");
+  Serial.print(omega3);
+  Serial.print(",");
+  Serial.print(omega4);
   Serial.println();
-*/
+ */
 
   this->set_motor_speed(omega1,omega2,omega3,omega4);
 }
@@ -193,8 +230,16 @@ void Car::display_fwd_kinematics(){
 }
 
 void Car::display_motor_speed(){
-  /**/
+  /*
   _FrontLeft_motor.print_commands();
+*/
+  for (int i=0;i<_motors_list_length;i++)
+  {
+    _motors_list[i]->print_commands();
+  }
+  Serial.println();
+
+
 }
 
 void Car::RC_commands(){

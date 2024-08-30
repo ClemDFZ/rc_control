@@ -1,10 +1,17 @@
 #include <Arduino.h>
+#ifndef MPU_HANDLER_CPP
+#define MPU_HANDLER_CPP
+
 //#include "MPU_handler.h"
 
 class MPU_handler{
   
   public:
-    float get_last_measure();
+    float get_last_measure(){
+      return _last_avg_yaw;
+    }
+
+
     void update_measure(float measure){
       _last_measure = measure;
       if ((_yaw_meas_cpt)<_YAW_MEAS_AVG_MAX){
@@ -24,12 +31,16 @@ class MPU_handler{
         //Serial.print(",");
         _yaw_speed_list[x] = 0.0;
       }
+      if  (_yaw_meas_cpt!=0){
+      avg_yaw = avg_yaw/(float)_yaw_meas_cpt;
+      }
+      else{
+        avg_yaw=_last_avg_yaw;
+      }
+      //Serial.println(avg_yaw);
+      _yaw_meas_cpt = 0;
 
-    avg_yaw = avg_yaw/(float)_yaw_meas_cpt;
-    //Serial.println(avg_yaw);
-    _yaw_meas_cpt = 0;
-
-    return avg_yaw;
+      return avg_yaw;
 	}
 
     float get_averaged_speed()
@@ -61,3 +72,5 @@ class MPU_handler{
     unsigned long _last_measure_time = 0;
     float _last_avg_yaw = 0;
 };
+
+#endif

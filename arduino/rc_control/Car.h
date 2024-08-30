@@ -2,11 +2,11 @@
 #define CAR_H
 
 #include "Motor.h"
-
+#include "MPU_handler.cpp"
 class Car {
     
 public:
-    Car(unsigned long SAMPLING_PERIOD);
+    Car(MPU_handler* mpu_handler,unsigned long SAMPLING_PERIOD);
 
     void tachy_front_left();
     void tachy_front_right();
@@ -26,13 +26,15 @@ public:
 
     void update_tachy();
     void inverse_kinematics();
-    void forward_kinematics(float avg_yaw);
+    void forward_kinematics();
     void display_fwd_kinematics();
     void display_motor_speed();
     void update_velocity_PID();
 
     void set_Ki(float Ki){_Ki_Vx = Ki;}
-    void set_Kp(float  Kp){_Kp_Vx = Kp;}   
+
+    void set_Kp_Vx(float  Kp){_Kp_Vx = Kp;}  
+    void set_Kp_yaw(float  Kp){_Kp_yaw = Kp;}  
 
     void set_car_setpoints(float Vx_setpoint,float Vy_setpoint,float omegaZ_setpoint);
     void set_motor_speed(float omega1,float omega2,float omega3,float omega4);
@@ -40,8 +42,8 @@ public:
 
 private:
     // Distances inter-moteurs
-    float _L = 0.25; // wheels length distance
-    float _W = 0.2;  // wheels width distance
+    float _L = 0.210; // wheels length distance
+    float _W = 0.210;  // wheels width distance
     float _wheel_radius=(97.0/2.0)/1000.0; //wheel radius (meter)
 
     float _Vx_odo,_Vy_odo,_omegaZ_odo;
@@ -52,11 +54,15 @@ private:
     Motor* _motors_list[4];
     int _motors_list_length = 4;
     
+    MPU_handler* _mpu_handler;
+    float _yaw=0.0;
+    float _target_yaw = 0.0;
+    float _Kp_yaw = 0.5;
     float _Kp_Vx = 0.0;
     float _Ki_Vx = 0.00;
     float _Kp_Vy = 0.0;
     float _Ki_Vy = 0.00;
-    float _Kp_omegaZ = 0;
+    float _Kp_omegaZ = 0.0;
     float _Ki_omegaZ = 0.000;
 };
 

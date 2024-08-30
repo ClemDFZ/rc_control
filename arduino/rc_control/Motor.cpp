@@ -116,8 +116,15 @@ void Motor::print_commands()
 }
 
 float Motor::linear_pwm_command(float target_radpersec){
+	if (target_radpersec>=0){
 	float target_pwm = 0.0013*pow(target_radpersec,4) - 0.0617*pow(target_radpersec,3) + 1.0092*pow(target_radpersec,2) - 3.3109*target_radpersec + 32.435;
 	return target_pwm;
+	}
+	else{
+		target_radpersec = -target_radpersec;
+		float target_pwm = 0.0013*pow(target_radpersec,4) - 0.0617*pow(target_radpersec,3) + 1.0092*pow(target_radpersec,2) - 3.3109*target_radpersec + 32.435;
+		return -target_pwm;
+	}
 }
 
 void Motor::send_PID_input()
@@ -132,7 +139,7 @@ void Motor::send_PID_input()
 
 // Méthode pour régler la vitesse et la direction du moteur
 void Motor::sendPWM(int speed) {
-	if (speed != 0) {
+	//if (speed != 0) {
 	if (speed >= 0) {
 		// Sens de rotation horaire
 		digitalWrite(_pinDirection1, LOW);
@@ -144,7 +151,7 @@ void Motor::sendPWM(int speed) {
 		speed = -speed;  // Convertir la vitesse en valeur positive pour PWM
 	}
 	analogWrite(_pinPWM, constrain(speed, 0, 255));
-	}
+	//}
 }
 
 // Méthode pour mettre à jour la rotation basée sur l'encodeur
@@ -174,7 +181,8 @@ float Motor::getRotationSpeed() {
 
 
 float Motor::get_averaged_speed(){
-	float avg_speed = 0.0;
+	float avg_speed;
+	if (_rot_meas_cpt!=0){
 	for (int x=0;x<_rot_meas_cpt;x++)
 	{	
 		float meas_speed = _rot_speed_list[x];
@@ -183,8 +191,12 @@ float Motor::get_averaged_speed(){
 		//Serial.print(",");
 		_rot_speed_list[x] = 0.0;
 	}
-
+	
 	avg_speed = avg_speed/(float)_rot_meas_cpt;
+	}
+	else{
+	avg_speed = _rotationSpeed;
+	}
 	//Serial.println(avg_speed);
 	_rot_meas_cpt = 0;
 	return avg_speed;
