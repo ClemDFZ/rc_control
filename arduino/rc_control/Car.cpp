@@ -4,10 +4,10 @@
 
 
 Car::Car(MPU_handler* mpu_handler,unsigned long SAMPLING_PERIOD ) :
-	_FrontLeft_motor(50, 51, 5, 62, 63,SAMPLING_PERIOD),    // A8 -> 62, A9 -> 63
-	_FrontRight_motor(48, 49, 6, 64, 65,SAMPLING_PERIOD),   // A10 -> 64, A11 -> 65
-	_RearLeft_motor(26, 27, 7, 66, 67,SAMPLING_PERIOD),     // A12 -> 66, A13 -> 67
-	_RearRight_motor(24, 25, 8, 68, 69,SAMPLING_PERIOD),  // A14 -> 68, A15 -> 69
+	_FrontLeft_motor(50, 51, 4, 62, 63,SAMPLING_PERIOD),    // A8 -> 62, A9 -> 63
+	_FrontRight_motor(48, 49, 5, 64, 65,SAMPLING_PERIOD),   // A10 -> 64, A11 -> 65
+	_RearLeft_motor(26, 27, 6, 66, 67,SAMPLING_PERIOD),     // A12 -> 66, A13 -> 67
+	_RearRight_motor(24, 25, 7, 68, 69,SAMPLING_PERIOD),  // A14 -> 68, A15 -> 69
   _mpu_handler(mpu_handler)
 	{
 	_motors_list[0] = &_FrontLeft_motor;
@@ -104,7 +104,7 @@ void Car::forward_kinematics(){
   _yaw = -_mpu_handler->get_last_measure();
 
   //Serial.println(_yaw);
-  /**/
+  /*
   Serial.print(_Vx_odo);
   Serial.print(",");
   Serial.print(_Vy_odo);
@@ -112,7 +112,13 @@ void Car::forward_kinematics(){
   Serial.print(_omegaZ_odo);
   Serial.print(",");
   Serial.println(_yaw);
-  
+  */
+}
+
+void Car::reset_target_yaw(){
+  Serial.println(_target_yaw);
+  _target_yaw = -_mpu_handler->get_last_measure();
+  Serial.println(_target_yaw);
 }
 
 void Car::set_car_setpoints(float Vx_setpoint,float Vy_setpoint,float omegaZ_setpoint){
@@ -120,6 +126,7 @@ void Car::set_car_setpoints(float Vx_setpoint,float Vy_setpoint,float omegaZ_set
 	_Vy_setpoint = Vy_setpoint;
 	_omegaZ_setpoint = omegaZ_setpoint;
 }
+
 
 void Car::update_velocity_PID()
 {       
@@ -139,7 +146,17 @@ void Car::update_velocity_PID()
     else{
       float d_yaw = _target_yaw-_yaw;
       _omegaZ_corrected = _Kp_yaw*d_yaw;
-      //Serial.println(_omegaZ_corrected);
+        Serial.print(_Vx_setpoint);
+      Serial.print(",");
+      Serial.print(d_Vx);
+      Serial.print(",");
+      Serial.print(_Vx_corrected);
+      Serial.print(",");
+      Serial.print(_target_yaw);
+      Serial.print(",");
+      Serial.print(_yaw);
+      Serial.print(",");
+      Serial.println(_omegaZ_corrected);
     }
 
 /*  
@@ -149,11 +166,9 @@ void Car::update_velocity_PID()
     Serial.print(",");
     Serial.print(_Vx_corrected);
     Serial.print(",");
-
-    Serial.print(d_omegaZ);
-    Serial.print(",");
-    Serial.println(_omegaZ_corrected);
-  */ 
+*/ 
+   
+  
 }
 
 void Car::set_motor_Kp(float Kp){ 

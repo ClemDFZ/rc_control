@@ -15,6 +15,8 @@ public:
 
     void update_motor_PID();
 
+    void reset_target_yaw();
+
     void set_motor_Kp(float Kp);
     void set_motor_Ki(float Kd);
     void set_motor_Kd(float Ki);
@@ -55,9 +57,10 @@ private:
     int _motors_list_length = 4;
     
     MPU_handler* _mpu_handler;
+    
     float _yaw=0.0;
     float _target_yaw = 0.0;
-    float _Kp_yaw = 0.5;
+    float _Kp_yaw = 0.05;
     float _Kp_Vx = 0.0;
     float _Ki_Vx = 0.00;
     float _Kp_Vy = 0.0;

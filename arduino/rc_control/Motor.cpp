@@ -129,10 +129,25 @@ float Motor::linear_pwm_command(float target_radpersec){
 
 void Motor::send_PID_input()
 {
-	if ((abs(_previous_pwm-_pwm_corrected))>_MAX_PWM_DIFF){
+	if ((abs(_previous_pwm-_pwm_corrected))<=_MAX_PWM_DIFF)
+	{
+		sendPWM(_pwm_corrected);
+		_previous_pwm = _pwm_corrected;	
 	}
-	sendPWM(_pwm_corrected);
-	_previous_pwm = _pwm_corrected;
+	else
+	{
+		float pwm2send;
+		if (_previous_pwm>=_pwm_corrected)
+		{
+			pwm2send = _previous_pwm-_MAX_PWM_DIFF;
+		}
+		else
+		{
+			pwm2send = _previous_pwm+_MAX_PWM_DIFF;
+		}
+		sendPWM(_pwm_corrected);
+		_previous_pwm = pwm2send;
+	}	
 }
 
 
@@ -140,6 +155,8 @@ void Motor::send_PID_input()
 // Méthode pour régler la vitesse et la direction du moteur
 void Motor::sendPWM(int speed) {
 	//if (speed != 0) {
+	if (abs(speed)>=10)
+	{
 	if (speed >= 0) {
 		// Sens de rotation horaire
 		digitalWrite(_pinDirection1, LOW);
@@ -151,6 +168,7 @@ void Motor::sendPWM(int speed) {
 		speed = -speed;  // Convertir la vitesse en valeur positive pour PWM
 	}
 	analogWrite(_pinPWM, constrain(speed, 0, 255));
+	}
 	//}
 }
 

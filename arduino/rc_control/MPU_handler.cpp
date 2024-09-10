@@ -8,7 +8,7 @@ class MPU_handler{
   
   public:
     float get_last_measure(){
-      return _last_avg_yaw;
+      return _last_measure;
     }
 
 

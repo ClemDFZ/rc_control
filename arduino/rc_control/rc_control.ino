@@ -31,6 +31,7 @@ CrsfSerial crsf(Serial2, CRSF_BAUDRATE);
 #define MPU6050_ADDRESS_AD0_HIGH    0x69 // address pin high (VCC)
 #define MPU6050_DEFAULT_ADDRESS     MPU6050_ADDRESS_AD0_LOW
 
+
 Simple_MPU6050 mpu;
 MPU_handler mpu_handler;
 
@@ -53,8 +54,11 @@ void update_handler (int16_t *gyro, int16_t *accel, int32_t *quat) {
   mpu_handler.update_measure(yaw);
 }
 
+#include <Servo.h> // Inclusion de la bibliothèque Servo
 
-
+Servo cam_servo;
+int servoPin = 10; // Pin où est connecté le servo
+int angleServo = 135; 
 
 // Distances inter-moteurs
 float L = 0.25; // wheels length distance
@@ -105,7 +109,7 @@ int throttle,roll,pitch,yaw,LB,RB,LP;
 bool RT = true;
 bool LT = true;
 
-String control_mode = "SERIAL";
+bool remote_controlled = false;
 String receivedData="";
 
 float Vx_setpoint = 0.0;
@@ -114,10 +118,12 @@ float omegaZ_setpoint = 0.0;
 
 bool is_Armed = true;
 
-
 bool Serial_Connected = false ;
 
 void setup() {
+  cam_servo.attach(servoPin);
+  cam_servo.write(angleServo);
+  cam_servo.detach();
   /*
   TCCR3B = TCCR3B & 0b11111000 | 0x02;
   TCCR4B = TCCR4B & 0b11111000 | 0x02;  // Prescaler 8 -> PWM ~3.9 kHz
@@ -146,7 +152,6 @@ void setup() {
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(64), tachy_front_right, CHANGE);
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(66), tachy_rear_left, CHANGE);
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(68), tachy_rear_right, CHANGE);
-  control_mode = "SERIAL";
   digitalWrite(52,HIGH); // LED to know calib is done
 }
 
@@ -175,7 +180,10 @@ void loop() {
   if (now_sampling - lastSAMPLINGTime >= SAMPLING_PERIOD*1000.0) {  
       lastSAMPLINGTime = now_sampling;
       update_sensors(); 
-  if  (control_mode=="SERIAL") {
+
+  //Mecanum_Car.display_fwd_kinematics();
+
+  if  (!remote_controlled) {
     //Mecanum_Car.send_PWM(PWM_setpoint,0,0,0);
       
       unsigned long now_PID = millis();
@@ -208,11 +216,11 @@ void loop() {
         //Mecanum_Car.display_motor_speed(); 
         //Mecanum_Car.display_fwd_kinematics();
       }
-
+  
       unsigned long now_setpoint = millis();
       if (now_setpoint - lastSetpointTime >= SETPOINT_PERIOD) {
         lastSetpointTime = now_setpoint;
-        update_setpoint();
+        //update_setpoint();
         /*
       Serial.print(PWM_setpoint);
       Serial.print(",");
@@ -270,59 +278,46 @@ void parseString(String str) {
   int xIndex = str.indexOf('X');
   int yIndex = str.indexOf('Y');
   int zIndex = str.indexOf('Z');
+  int sIndex = str.indexOf('S');
 
-  int pIndex = str.indexOf('P');
-  int iIndex = str.indexOf('I'); 
-  int dIndex = str.indexOf('D');
+  bool update_setpoint = false;
 
   // Extraire les sous-chaînes pour X, Y, Z
   if (xIndex != -1) {
     int spaceIndex = str.indexOf(' ', xIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'X' est le dernier élément
     Vx_setpoint = str.substring(xIndex + 1, spaceIndex).toFloat();
+    update_setpoint = true;
   }
 
   if (yIndex != -1) {
     int spaceIndex = str.indexOf(' ', yIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Y' est le dernier élément
     Vy_setpoint = str.substring(yIndex + 1, spaceIndex).toFloat();
+    update_setpoint = true;
   }
 
   if (zIndex != -1) {
     int spaceIndex = str.indexOf(' ', zIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
     omegaZ_setpoint = str.substring(zIndex + 1, spaceIndex).toFloat();
+    update_setpoint = true;
   }
 
-  if (pIndex != -1) {
-    int spaceIndex = str.indexOf(' ', pIndex);
+  if (sIndex != -1) {
+    int spaceIndex = str.indexOf(' ', sIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
-    float Kp = str.substring(pIndex + 1, spaceIndex).toFloat();
-    //Mecanum_Car.set_Kp(Kp);
-    Mecanum_Car.set_motor_Kp(Kp);
+    angleServo = str.substring(sIndex + 1, spaceIndex).toInt();
+    cam_servo.attach(servoPin);
+    cam_servo.write(angleServo);
+    delay(1000);
+    cam_servo.detach();
   }
 
-  if (iIndex != -1) {
-    int spaceIndex = str.indexOf(' ', iIndex);
-    if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
-    float Ki = str.substring(iIndex + 1, spaceIndex).toFloat();
-    //Mecanum_Car.set_Ki(Ki);
-    Mecanum_Car.set_motor_Ki(Ki);
-  }
-
-  if (dIndex != -1) {
-    int spaceIndex = str.indexOf(' ', dIndex);
-    if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
-    float Kd = str.substring(dIndex + 1, spaceIndex).toFloat();
-    Mecanum_Car.set_motor_Kd(Kd);
-
-  }
-
-
+  if (update_setpoint){Mecanum_Car.set_car_setpoints(Vx_setpoint,Vy_setpoint,omegaZ_setpoint);}
   }
 
 void RC_callback() {
-  
   throttle = crsf.getChannel(1);
   throttle = constrain(map(throttle,1000,2000,-100,100), -100, 100);
   roll = crsf.getChannel(2);
@@ -338,20 +333,22 @@ void RC_callback() {
   else{
     is_Armed = false;
   }
-  if (RT){
-    control_mode="RC";
-  }else{
-    control_mode="SERIAL";
+  if (RT){ 
+      if (!remote_controlled){   
+      remote_controlled=true;   
+      } 
+  }
+  else{
+    if (remote_controlled){
+      Mecanum_Car.reset_target_yaw();
+      remote_controlled=false;
+      }
   }
   RT= single_switch(crsf.getChannel(6));
   LB= double_switch(crsf.getChannel(7));
   RB= double_switch(crsf.getChannel(8));
   LP= crsf.getChannel(9);  
-
-
-
-  float Kp = (constrain(LP,1000,2000)-1000.0)/2/1000.0;
-  Mecanum_Car.set_Kp_yaw(Kp);
+  
 /*
   Serial.print(throttle);
   Serial.print(",");
@@ -372,9 +369,9 @@ void RC_callback() {
   Serial.print(LP);
   Serial.println();
 */
-  //control_mode="SERIAL";
+  //remote_controlled="SERIAL";
   
-  if ((control_mode == "RC") && is_Armed)
+  if (remote_controlled && is_Armed)
     {
     float omega1 = (pitch - roll - (L + W) * yaw);
     float omega2 = (pitch + roll + (L + W) * yaw);
@@ -390,7 +387,7 @@ void RC_callback() {
       float PWM3 = omega3 / maxSpeed * 255 * maxThrottle  ;
       float PWM4 = omega4 / maxSpeed * 255 * maxThrottle  ;
       Mecanum_Car.send_PWM(PWM1,PWM2,PWM3,PWM4);
-      Mecanum_Car.display_motor_speed();
+      //Mecanum_Car.display_motor_speed();
       //Mecanum_Car.display_yaw();
       }
     } 

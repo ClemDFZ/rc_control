@@ -34,7 +34,7 @@ private:
     unsigned long _SAMPLING_PERIOD;
     const int tachy_per_turn = 816; //Résolution encodeur
     const float _top_rotation_speed = 5.5*2*PI; // Vmax moteur, à changer en dynamique dépendemment voltage
-    const int _MAX_PWM_DIFF = 50;
+    const int _MAX_PWM_DIFF = 100;
     int _tachy = 0;
     long int _total_tachy = 0;
     float _rotationSpeed = 0.0;
@@ -55,7 +55,7 @@ private:
     float _tachy_to_rpm_calculus = 7.699982;
     float _target_rotation_speed = 0;
     int _pwm_corrected;
-    int _previous_pwm = 0;
+    float _previous_pwm = 0;
     float _Kp = 9;
     float _Ki = 0.1;
     float _Kd = 3;
