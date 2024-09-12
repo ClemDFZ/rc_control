@@ -1,12 +1,13 @@
 #ifndef CAR_H
 #define CAR_H
-
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 #include "Motor.h"
 #include "MPU_handler.cpp"
 class Car {
     
 public:
-    Car(MPU_handler* mpu_handler,unsigned long SAMPLING_PERIOD);
+    Car(MPU_handler* mpu_handler,LiquidCrystal_I2C* lcd_screen,unsigned long SAMPLING_PERIOD);
 
     void tachy_front_left();
     void tachy_front_right();
@@ -21,6 +22,8 @@ public:
     void set_motor_Ki(float Kd);
     void set_motor_Kd(float Ki);
 
+    float get_target_yaw(){return _target_yaw;}
+    float get_yaw(){return _yaw;}
     void update_motors_command();
 
     void send_PWM(float PWM);
@@ -57,7 +60,7 @@ private:
     int _motors_list_length = 4;
     
     MPU_handler* _mpu_handler;
-    
+    LiquidCrystal_I2C* _lcd_screen;
     float _yaw=0.0;
     float _target_yaw = 0.0;
     float _Kp_yaw = 0.05;

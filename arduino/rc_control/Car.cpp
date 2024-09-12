@@ -3,12 +3,13 @@
 
 
 
-Car::Car(MPU_handler* mpu_handler,unsigned long SAMPLING_PERIOD ) :
+Car::Car(MPU_handler* mpu_handler,LiquidCrystal_I2C* lcd_screen,unsigned long SAMPLING_PERIOD ) :
 	_FrontLeft_motor(50, 51, 4, 62, 63,SAMPLING_PERIOD),    // A8 -> 62, A9 -> 63
 	_FrontRight_motor(48, 49, 5, 64, 65,SAMPLING_PERIOD),   // A10 -> 64, A11 -> 65
 	_RearLeft_motor(26, 27, 6, 66, 67,SAMPLING_PERIOD),     // A12 -> 66, A13 -> 67
 	_RearRight_motor(24, 25, 7, 68, 69,SAMPLING_PERIOD),  // A14 -> 68, A15 -> 69
-  _mpu_handler(mpu_handler)
+  _mpu_handler(mpu_handler),
+  _lcd_screen(lcd_screen)
 	{
 	_motors_list[0] = &_FrontLeft_motor;
 	_motors_list[1] = &_FrontRight_motor;
@@ -116,9 +117,9 @@ void Car::forward_kinematics(){
 }
 
 void Car::reset_target_yaw(){
-  Serial.println(_target_yaw);
+  //Serial.println(_target_yaw);
   _target_yaw = -_mpu_handler->get_last_measure();
-  Serial.println(_target_yaw);
+  //Serial.println(_target_yaw);
 }
 
 void Car::set_car_setpoints(float Vx_setpoint,float Vy_setpoint,float omegaZ_setpoint){
@@ -138,7 +139,7 @@ void Car::update_velocity_PID()
     _Vy_corrected = _Vy_setpoint+ _Kp_Vy*d_Vy;
    
     if (_omegaZ_setpoint!= 0){
-    _target_yaw=0;
+    reset_target_yaw();
     float d_omegaZ = _omegaZ_setpoint-_omegaZ_odo;
     _omegaZ_corrected = _omegaZ_setpoint+ _Kp_omegaZ*d_omegaZ;
     }
@@ -146,7 +147,9 @@ void Car::update_velocity_PID()
     else{
       float d_yaw = _target_yaw-_yaw;
       _omegaZ_corrected = _Kp_yaw*d_yaw;
-        Serial.print(_Vx_setpoint);
+
+      /*
+      Serial.print(_Vx_setpoint);
       Serial.print(",");
       Serial.print(d_Vx);
       Serial.print(",");
@@ -157,6 +160,7 @@ void Car::update_velocity_PID()
       Serial.print(_yaw);
       Serial.print(",");
       Serial.println(_omegaZ_corrected);
+      */
     }
 
 /*  

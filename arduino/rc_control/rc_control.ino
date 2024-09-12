@@ -17,6 +17,9 @@
 #include <PinChangeInterruptBoards.h>
 #include <PinChangeInterruptPins.h>
 #include <PinChangeInterruptSettings.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
 
 #if defined(__AVR_ATmega2560__)
 CrsfSerial crsf(Serial2, CRSF_BAUDRATE);
@@ -60,6 +63,8 @@ Servo cam_servo;
 int servoPin = 10; // Pin où est connecté le servo
 int angleServo = 135; 
 
+LiquidCrystal_I2C lcd_screen(0x27, 16, 2);
+
 // Distances inter-moteurs
 float L = 0.25; // wheels length distance
 float W = 0.2;  // wheels width distance
@@ -79,6 +84,12 @@ unsigned long lastPIDTime = 0;
 const unsigned long DISPLAY_FREQUENCY = 25; // Fréquence en Hz (nombre de boucles par seconde)
 const unsigned long DISPLAY_PERIOD = 1000 / DISPLAY_FREQUENCY; // Période en millisecondes
 unsigned long lastDISPLAYTime = 0;
+
+
+const unsigned long LCD_FREQUENCY = 5; // Fréquence en Hz (nombre de boucles par seconde)
+const unsigned long LCD_PERIOD = 1000 / LCD_FREQUENCY; // Période en millisecondes
+unsigned long lastLCDTime = 0;
+
 
 const int SENSOR_AVG_FACTOR = SAMPLING_FREQUENCY/PID_FREQUENCY;
 
@@ -101,7 +112,7 @@ int PWM_setpoint = 0;
 float lastSetpoint = LOW_SETPOINT_METER_SEC;
 
 
-Car Mecanum_Car(&mpu_handler,SAMPLING_PERIOD);
+Car Mecanum_Car(&mpu_handler,&lcd_screen,SAMPLING_PERIOD);
 
 // Gestion RC
 void RC_callback();
@@ -121,6 +132,13 @@ bool is_Armed = true;
 bool Serial_Connected = false ;
 
 void setup() {
+  lcd_screen.init();                      // initialize the lcd 
+  // Print a message to the LCD.
+  lcd_screen.backlight();
+  lcd_screen.setCursor(2,0);
+  lcd_screen.print("Calibrating");
+  lcd_screen.setCursor(5,1);
+  lcd_screen.print("IMU");
   cam_servo.attach(servoPin);
   cam_servo.write(angleServo);
   cam_servo.detach();
@@ -147,6 +165,9 @@ void setup() {
   mpu.CalibrateMPU();
   mpu.load_DMP_Image();// Does it all for you with Calibration
   mpu.on_FIFO(update_handler);
+  lcd_screen.clear();
+  lcd_screen.setCursor(0, 0); // Définir le curseur à la position (0,0)
+  lcd_screen.print("Running"); 
   // Initialiser la pin d'interruption pour Encoder A
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(62), tachy_front_left, CHANGE);
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(64), tachy_front_right, CHANGE);
@@ -216,7 +237,15 @@ void loop() {
         //Mecanum_Car.display_motor_speed(); 
         //Mecanum_Car.display_fwd_kinematics();
       }
-  
+    
+      unsigned long now_lcd = millis();
+      if (now_lcd - lastLCDTime >= LCD_PERIOD) {
+        lastLCDTime = now_lcd;
+        refresh_LCD();
+      }
+
+
+
       unsigned long now_setpoint = millis();
       if (now_setpoint - lastSetpointTime >= SETPOINT_PERIOD) {
         lastSetpointTime = now_setpoint;
@@ -316,6 +345,33 @@ void parseString(String str) {
 
   if (update_setpoint){Mecanum_Car.set_car_setpoints(Vx_setpoint,Vy_setpoint,omegaZ_setpoint);}
   }
+
+void refresh_LCD(){
+  lcd_screen.clear();
+  
+  String Vx_lcd = "X:"+String(Vx_setpoint).substring(0, 6);
+  String Vy_lcd = "Y:"+String(Vy_setpoint).substring(0, 6);
+
+  lcd_screen.setCursor(0, 0); // Définir le curseur à la position (0,0)
+  lcd_screen.print(Vx_lcd); 
+  lcd_screen.setCursor(8, 0); // Définir le curseur à la position (0,0)
+  lcd_screen.print(Vy_lcd); 
+
+  if (omegaZ_setpoint==0){ 
+  String yaw_lcd = "Yaw:"+String(Mecanum_Car.get_yaw()).substring(0, 6);
+  lcd_screen.setCursor(0, 1); // Définir le curseur à la position (0,0)
+  lcd_screen.print(yaw_lcd); 
+  }
+  else {
+  String omegaZ_lcd = "Z:"+String(omegaZ_setpoint).substring(0, 6);
+  lcd_screen.setCursor(0, 1); // Définir le curseur à la position (0,0)
+  lcd_screen.print(omegaZ_lcd);  
+  }
+  String target_lcd = "T:"+String(Mecanum_Car.get_target_yaw()).substring(0, 6);
+  lcd_screen.setCursor(9, 1); // Définir le curseur à la position (0,0)
+  lcd_screen.print(target_lcd); 
+
+}
 
 void RC_callback() {
   throttle = crsf.getChannel(1);

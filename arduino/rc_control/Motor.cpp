@@ -155,7 +155,7 @@ void Motor::send_PID_input()
 // Méthode pour régler la vitesse et la direction du moteur
 void Motor::sendPWM(int speed) {
 	//if (speed != 0) {
-	if (abs(speed)>=10)
+	if (abs(speed)>=20)
 	{
 	if (speed >= 0) {
 		// Sens de rotation horaire
@@ -169,6 +169,10 @@ void Motor::sendPWM(int speed) {
 	}
 	analogWrite(_pinPWM, constrain(speed, 0, 255));
 	}
+	/*else
+	{
+		analogWrite(_pinPWM, 0);
+	}*/
 	//}
 }
 
