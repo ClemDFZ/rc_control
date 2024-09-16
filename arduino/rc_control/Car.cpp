@@ -100,8 +100,8 @@ void Car::forward_kinematics(){
   //Serial.print(",");
   _Vx_odo = _wheel_radius*(omega1+omega2+omega3+omega4)/4;
   _Vy_odo = _wheel_radius*(-omega1+omega2+omega3-omega4)/4;
-  //_omegaZ_odo = _wheel_radius*(-omega1+omega2-omega3+omega4)/(4*(_L+_W));
-  _omegaZ_odo=-_mpu_handler->get_averaged_speed();
+  //_omegaZ_gyro = _wheel_radius*(-omega1+omega2-omega3+omega4)/(4*(_L+_W));
+  _omegaZ_gyro=-_mpu_handler->get_averaged_speed();
   _yaw = -_mpu_handler->get_last_measure();
 
   //Serial.println(_yaw);
@@ -110,7 +110,7 @@ void Car::forward_kinematics(){
   Serial.print(",");
   Serial.print(_Vy_odo);
   Serial.print(",");
-  Serial.print(_omegaZ_odo);
+  Serial.print(_omegaZ_gyro);
   Serial.print(",");
   Serial.println(_yaw);
   */
@@ -140,14 +140,22 @@ void Car::update_velocity_PID()
    
     if (_omegaZ_setpoint!= 0){
     reset_target_yaw();
-    float d_omegaZ = _omegaZ_setpoint-_omegaZ_odo;
+    float d_omegaZ = _omegaZ_setpoint-_omegaZ_gyro;
     _omegaZ_corrected = _omegaZ_setpoint+ _Kp_omegaZ*d_omegaZ;
     }
 
     else{
       float d_yaw = _target_yaw-_yaw;
-      _omegaZ_corrected = _Kp_yaw*d_yaw;
 
+      if (!isnan(d_yaw)) {
+        _sum_dyaw += d_yaw;
+      }
+
+      if ((_sum_dyaw > 0 && _previous_dyaw < 0) || (_sum_dyaw < 0 && _previous_dyaw > 0)) {
+          _sum_dyaw = 0;}
+      float I_term = constrain(_Ki_yaw*_sum_dyaw,-1.0,1.0);
+      _omegaZ_corrected = _Kp_yaw*d_yaw+I_term;
+      _previous_dyaw = d_yaw;
       /*
       Serial.print(_Vx_setpoint);
       Serial.print(",");

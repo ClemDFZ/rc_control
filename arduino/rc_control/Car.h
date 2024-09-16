@@ -24,6 +24,11 @@ public:
 
     float get_target_yaw(){return _target_yaw;}
     float get_yaw(){return _yaw;}
+    float get_Vx(){return _Vx_odo;}
+    float get_Vy(){return _Vy_odo;}
+    float get_omegaZ(){return _omegaZ_gyro;}
+
+
     void update_motors_command();
 
     void send_PWM(float PWM);
@@ -51,7 +56,7 @@ private:
     float _W = 0.210;  // wheels width distance
     float _wheel_radius=(97.0/2.0)/1000.0; //wheel radius (meter)
 
-    float _Vx_odo,_Vy_odo,_omegaZ_odo;
+    float _Vx_odo,_Vy_odo,_omegaZ_gyro;
     float _Vx_corrected,_Vy_corrected,_omegaZ_corrected;
     float _Vx_setpoint,_Vy_setpoint,_omegaZ_setpoint;	
     
@@ -64,6 +69,10 @@ private:
     float _yaw=0.0;
     float _target_yaw = 0.0;
     float _Kp_yaw = 0.05;
+    float _Ki_yaw = 0.005;
+    float _sum_dyaw = 0;
+    float _previous_dyaw=0;
+
     float _Kp_Vx = 0.0;
     float _Ki_Vx = 0.00;
     float _Kp_Vy = 0.0;

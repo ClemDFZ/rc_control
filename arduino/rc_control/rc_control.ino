@@ -86,7 +86,7 @@ const unsigned long DISPLAY_PERIOD = 1000 / DISPLAY_FREQUENCY; // Période en mi
 unsigned long lastDISPLAYTime = 0;
 
 
-const unsigned long LCD_FREQUENCY = 5; // Fréquence en Hz (nombre de boucles par seconde)
+const unsigned long LCD_FREQUENCY = 2; // Fréquence en Hz (nombre de boucles par seconde)
 const unsigned long LCD_PERIOD = 1000 / LCD_FREQUENCY; // Période en millisecondes
 unsigned long lastLCDTime = 0;
 
@@ -349,28 +349,36 @@ void parseString(String str) {
 void refresh_LCD(){
   lcd_screen.clear();
   
-  String Vx_lcd = "X:"+String(Vx_setpoint).substring(0, 6);
-  String Vy_lcd = "Y:"+String(Vy_setpoint).substring(0, 6);
-
+  // Print setpoints Vx and Vy (m/s)
+  String Vx_lcd = "X:"+String(Mecanum_Car.get_Vx()).substring(0, 6);
+  String Vy_lcd = "Y:"+String(Mecanum_Car.get_Vy()).substring(0, 6);
   lcd_screen.setCursor(0, 0); // Définir le curseur à la position (0,0)
   lcd_screen.print(Vx_lcd); 
   lcd_screen.setCursor(8, 0); // Définir le curseur à la position (0,0)
   lcd_screen.print(Vy_lcd); 
+  // Print arming status
+  lcd_screen.setCursor(15, 0); 
+  if (is_Armed){ 
+    lcd_screen.print("A"); 
+  }
+  else{
+    lcd_screen.print("U"); 
+  }
 
+  // If omegaZ setpoint print it, else print current yaw and targets
   if (omegaZ_setpoint==0){ 
   String yaw_lcd = "Yaw:"+String(Mecanum_Car.get_yaw()).substring(0, 6);
   lcd_screen.setCursor(0, 1); // Définir le curseur à la position (0,0)
   lcd_screen.print(yaw_lcd); 
-  }
-  else {
-  String omegaZ_lcd = "Z:"+String(omegaZ_setpoint).substring(0, 6);
-  lcd_screen.setCursor(0, 1); // Définir le curseur à la position (0,0)
-  lcd_screen.print(omegaZ_lcd);  
-  }
   String target_lcd = "T:"+String(Mecanum_Car.get_target_yaw()).substring(0, 6);
   lcd_screen.setCursor(9, 1); // Définir le curseur à la position (0,0)
   lcd_screen.print(target_lcd); 
-
+  }
+  else {
+  String omegaZ_lcd = "Z:"+String(Mecanum_Car.get_omegaZ()).substring(0, 6);
+  lcd_screen.setCursor(0, 1); // Définir le curseur à la position (0,0)
+  lcd_screen.print(omegaZ_lcd);  
+  }
 }
 
 void RC_callback() {
