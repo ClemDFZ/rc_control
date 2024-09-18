@@ -61,7 +61,14 @@ void update_handler (int16_t *gyro, int16_t *accel, int32_t *quat) {
 
 Servo cam_servo;
 int servoPin = 10; // Pin où est connecté le servo
-int angleServo = 135; 
+int angleServo = 45; 
+const float SERVO_MILLI_PER_DEG = 150.0/60.0;
+const int SAFE_SERVO_STARTUP_TIME=100;
+bool servo_attached = false;
+unsigned long timer_servo_not_idle;
+const unsigned int SERVO_IDLE_THRESHOLD = 2000; //Temps avant que le servo se detach
+
+
 
 LiquidCrystal_I2C lcd_screen(0x27, 16, 2);
 
@@ -142,6 +149,7 @@ void setup() {
   cam_servo.attach(servoPin);
   cam_servo.write(angleServo);
   cam_servo.detach();
+  timer_servo_not_idle = millis();
   /*
   TCCR3B = TCCR3B & 0b11111000 | 0x02;
   TCCR4B = TCCR4B & 0b11111000 | 0x02;  // Prescaler 8 -> PWM ~3.9 kHz
@@ -174,6 +182,7 @@ void setup() {
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(66), tachy_rear_left, CHANGE);
   attachPinChangeInterrupt(digitalPinToPinChangeInterrupt(68), tachy_rear_right, CHANGE);
   digitalWrite(52,HIGH); // LED to know calib is done
+  Serial.println("setup end");
 }
 
 void tachy_front_left(){
@@ -201,8 +210,14 @@ void loop() {
   if (now_sampling - lastSAMPLINGTime >= SAMPLING_PERIOD*1000.0) {  
       lastSAMPLINGTime = now_sampling;
       update_sensors(); 
-
   //Mecanum_Car.display_fwd_kinematics();
+
+  unsigned long now_servo = millis();
+  if (now_servo-timer_servo_not_idle >= SERVO_IDLE_THRESHOLD)
+  {
+      servo_attached = false;
+      cam_servo.detach();
+  }
 
   if  (!remote_controlled) {
     //Mecanum_Car.send_PWM(PWM_setpoint,0,0,0);
@@ -295,6 +310,7 @@ void readSerial() // Lecture des données envoyées sur le port Série 0
       char receivedChar = Serial.read();  // Lire un caractère
       if (receivedChar == '\n') {  // Fin de la ligne (si utilisé comme délimiteur)
         parseString(receivedData);
+        Serial.println("done");
         receivedData = "";  // Réinitialiser pour la prochaine chaîne
       } else {
         receivedData += receivedChar;  // Ajouter le caractère à la chaîne reçue
@@ -336,11 +352,20 @@ void parseString(String str) {
   if (sIndex != -1) {
     int spaceIndex = str.indexOf(' ', sIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
-    angleServo = str.substring(sIndex + 1, spaceIndex).toInt();
-    cam_servo.attach(servoPin);
-    cam_servo.write(angleServo);
-    delay(1000);
-    cam_servo.detach();
+    int target_angle = str.substring(sIndex + 1, spaceIndex).toInt();
+    int diffAngle = abs(angleServo-target_angle);
+    int time2wait = SERVO_MILLI_PER_DEG*diffAngle; 
+
+    if (!servo_attached)
+    {
+      cam_servo.attach(servoPin);
+      time2wait += SAFE_SERVO_STARTUP_TIME; 
+      servo_attached = true;
+    } 
+    cam_servo.write(target_angle);
+    delay(time2wait);
+    timer_servo_not_idle = millis();
+    angleServo=target_angle;
   }
 
   if (update_setpoint){Mecanum_Car.set_car_setpoints(Vx_setpoint,Vy_setpoint,omegaZ_setpoint);}
