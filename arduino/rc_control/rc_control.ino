@@ -62,13 +62,15 @@ void update_handler (int16_t *gyro, int16_t *accel, int32_t *quat) {
 Servo cam_servo;
 int servoPin = 10; // Pin où est connecté le servo
 int angleServo = 45; 
-const float SERVO_MILLI_PER_DEG = 150.0/60.0;
+const float SERVO_MILLI_PER_DEG = 150/60.0;
 const int SAFE_SERVO_STARTUP_TIME=100;
 bool servo_attached = false;
 unsigned long timer_servo_not_idle;
+unsigned long timer_servo_free = 0;
 const unsigned int SERVO_IDLE_THRESHOLD = 2000; //Temps avant que le servo se detach
-
-
+bool servo_used = false;
+int servo_setpoint=45;
+int target_angle = 45;
 
 LiquidCrystal_I2C lcd_screen(0x27, 16, 2);
 
@@ -213,11 +215,20 @@ void loop() {
   //Mecanum_Car.display_fwd_kinematics();
 
   unsigned long now_servo = millis();
+  if (now_servo-timer_servo_not_idle >= timer_servo_free)
+  {
+    angleServo = target_angle;
+    servo_used = false;
+  }
+
   if (now_servo-timer_servo_not_idle >= SERVO_IDLE_THRESHOLD)
   {
       servo_attached = false;
       cam_servo.detach();
   }
+  servo_handler();
+
+
 
   if  (!remote_controlled) {
     //Mecanum_Car.send_PWM(PWM_setpoint,0,0,0);
@@ -304,6 +315,27 @@ void update_sensors(){
   Mecanum_Car.update_tachy();
 }
 
+void servo_handler(){
+  if (!servo_used)
+  {
+    target_angle = servo_setpoint;
+    if (target_angle != angleServo)
+    {
+      int diffAngle = abs(angleServo-target_angle);
+      timer_servo_free = SERVO_MILLI_PER_DEG*diffAngle; 
+      if (!servo_attached)
+      {
+        cam_servo.attach(servoPin);
+        timer_servo_free += SAFE_SERVO_STARTUP_TIME; 
+        servo_attached = true;
+      } 
+      cam_servo.write(target_angle);
+      timer_servo_not_idle = millis();
+      servo_used = true;
+    }
+  }
+}
+
 void readSerial() // Lecture des données envoyées sur le port Série 0
 {
   if (Serial.available() > 0) {
@@ -352,20 +384,7 @@ void parseString(String str) {
   if (sIndex != -1) {
     int spaceIndex = str.indexOf(' ', sIndex);
     if (spaceIndex == -1) spaceIndex = str.length(); // Cas où 'Z' est le dernier élément
-    int target_angle = str.substring(sIndex + 1, spaceIndex).toInt();
-    int diffAngle = abs(angleServo-target_angle);
-    int time2wait = SERVO_MILLI_PER_DEG*diffAngle; 
-
-    if (!servo_attached)
-    {
-      cam_servo.attach(servoPin);
-      time2wait += SAFE_SERVO_STARTUP_TIME; 
-      servo_attached = true;
-    } 
-    cam_servo.write(target_angle);
-    delay(time2wait);
-    timer_servo_not_idle = millis();
-    angleServo=target_angle;
+    servo_setpoint = str.substring(sIndex + 1, spaceIndex).toInt();
   }
 
   if (update_setpoint){Mecanum_Car.set_car_setpoints(Vx_setpoint,Vy_setpoint,omegaZ_setpoint);}
