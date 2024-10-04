@@ -2,7 +2,7 @@
 #include "Motor.h"
 
 // Constructeur pour initialiser les broches du moteur et des encodeurs
-Motor::Motor(int pinDirection1, int pinDirection2, int pinPWM, int pinEncoderA, int pinEncoderB,unsigned long sampling_period)
+Motor::Motor(int pinDirection1, int pinDirection2, int pinPWM, int pinEncoderA, int pinEncoderB)
         : _pinDirection1(pinDirection1), _pinDirection2(pinDirection2), _pinPWM(pinPWM), _pinEncoderA(pinEncoderA), _pinEncoderB(pinEncoderB) {
         // Configurer les broches de direction, PWM, et encodeurs
         pinMode(_pinDirection1, OUTPUT);
@@ -10,7 +10,6 @@ Motor::Motor(int pinDirection1, int pinDirection2, int pinPWM, int pinEncoderA, 
         pinMode(_pinPWM, OUTPUT);
         pinMode(_pinEncoderA, INPUT_PULLUP);
         pinMode(_pinEncoderB, INPUT_PULLUP);
-		_SAMPLING_PERIOD = sampling_period;
     }
 
 void Motor::increase_tachy(){
@@ -150,14 +149,39 @@ void Motor::send_PID_input()
 	}	
 }
 
+int Motor::filterPWM(int PWM) {
+	/*
+	for (int i = 0; i < _PWM_BUFFER_SIZE; i++) {
+    	Serial.print(_pwm_buffer[i]);
+    	Serial.print(",");
+	}
+	Serial.println();
+	*/
 
-
+	int max_diff = 0;
+	for (int i = 0; i < _PWM_BUFFER_SIZE; i++) {
+    int diff = abs(PWM - _pwm_buffer[i]);
+    if (diff > _MAX_PWM_DIFF && diff>=max_diff) {	  
+      // Si la différence dépasse le seuil, on la limite au seuil
+      if (PWM > _pwm_buffer[i]) {
+        PWM = _pwm_buffer[i] + _MAX_PWM_DIFF;
+      } else {
+        PWM = _pwm_buffer[i] - _MAX_PWM_DIFF;
+      }
+	  max_diff = diff;
+    }
+	}
+ 	_pwm_buffer[_buffer_index] = PWM;
+  	_buffer_index = (_buffer_index + 1) % _PWM_BUFFER_SIZE;  // Rotation circulaire du buffer
+	return PWM;
+}
 // Méthode pour régler la vitesse et la direction du moteur
-void Motor::sendPWM(int speed) {
-	//if (speed != 0) {
-	if (abs(speed)>=20)
+void Motor::sendPWM(int PWM) {
+	//PWM = filterPWM(PWM);
+	//Serial.println(PWM);
+	if (abs(PWM)>=0)
 	{
-	if (speed >= 0) {
+	if (PWM >= 0) {
 		// Sens de rotation horaire
 		digitalWrite(_pinDirection1, LOW);
 		digitalWrite(_pinDirection2, HIGH);
@@ -165,9 +189,9 @@ void Motor::sendPWM(int speed) {
 		// Sens de rotation antihoraire
 		digitalWrite(_pinDirection1, HIGH);
 		digitalWrite(_pinDirection2, LOW);
-		speed = -speed;  // Convertir la vitesse en valeur positive pour PWM
+		PWM = -PWM;  // Convertir la vitesse en valeur positive pour PWM
 	}
-	analogWrite(_pinPWM, constrain(speed, 0, 255));
+	analogWrite(_pinPWM, constrain(PWM, 0, 255));
 	}
 	/*else
 	{

@@ -7,7 +7,7 @@
 class Car {
     
 public:
-    Car(MPU_handler* mpu_handler,LiquidCrystal_I2C* lcd_screen,unsigned long SAMPLING_PERIOD);
+    Car(MPU_handler* mpu_handler);
 
     void tachy_front_left();
     void tachy_front_right();
@@ -28,6 +28,10 @@ public:
     float get_Vy(){return _Vy_odo;}
     float get_omegaZ(){return _omegaZ_gyro;}
 
+    void set_lcd_ptr(LiquidCrystal_I2C* lcd_screen){_lcd_screen = lcd_screen;}
+
+    void set_buffer_size(int buffer_size);
+    void set_max_pwm(int max_pwm);
 
     void update_motors_command();
 
@@ -48,7 +52,6 @@ public:
 
     void set_car_setpoints(float Vx_setpoint,float Vy_setpoint,float omegaZ_setpoint);
     void set_motor_speed(float omega1,float omega2,float omega3,float omega4);
-    void RC_commands();
 
 private:
     // Distances inter-moteurs
@@ -65,7 +68,7 @@ private:
     int _motors_list_length = 4;
     
     MPU_handler* _mpu_handler;
-    LiquidCrystal_I2C* _lcd_screen;
+    LiquidCrystal_I2C* _lcd_screen = nullptr;
     float _yaw=0.0;
     float _target_yaw = 0.0;
     float _Kp_yaw = 0.05;
@@ -77,8 +80,8 @@ private:
     float _Ki_Vx = 0.00;
     float _Kp_Vy = 0.0;
     float _Ki_Vy = 0.00;
-    float _Kp_omegaZ = 0.0;
-    float _Ki_omegaZ = 0.000;
+    float _Kp_omegaZ = 0.05;
+    float _Ki_omegaZ = 0.005;
 };
 
 #endif // CAR_H

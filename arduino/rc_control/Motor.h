@@ -4,7 +4,7 @@
 class Motor {
 public:
     // Constructeur pour initialiser les broches du moteur et des encodeurs
-    Motor(int pinDirection1, int pinDirection2, int pinPWM, int pinEncoderA, int pinEncoderB,unsigned long sampling_period);
+    Motor(int pinDirection1, int pinDirection2, int pinPWM, int pinEncoderA, int pinEncoderB);
     void increase_tachy();
     void setSpeed(float target_rotation_speed) {_target_rotation_speed = target_rotation_speed;}
     void PID_controller();
@@ -20,8 +20,12 @@ public:
     
     void set_Kd(float  Kd){_Kd = Kd;}
 
+    void set_buffer_size(int buffer_size){_PWM_BUFFER_SIZE=buffer_size;}
+    void set_max_pwm(int max_pwm){_MAX_PWM_DIFF=max_pwm;}
+
     // Méthode pour régler la vitesse et la direction du moteur
-    void sendPWM(int speed);
+    int filterPWM(int PWM);
+    void sendPWM(int PWM);
 
     // Méthode pour mettre à jour la rotation basée sur l'encodeur
     void update_rotation_speed();
@@ -31,10 +35,8 @@ public:
 
 private:
     float linear_pwm_command(float target_radpersec);
-    unsigned long _SAMPLING_PERIOD;
     const int tachy_per_turn = 816; //Résolution encodeur
     const float _top_rotation_speed = 5.5*2*PI; // Vmax moteur, à changer en dynamique dépendemment voltage
-    const int _MAX_PWM_DIFF = 100;
     int _tachy = 0;
     long int _total_tachy = 0;
     float _rotationSpeed = 0.0;
@@ -49,7 +51,12 @@ private:
     static const int _SPEED_MEAS_AVG_MAX = 10;
     float _rot_speed_list[_SPEED_MEAS_AVG_MAX];
     unsigned int _rot_meas_cpt = 0;
-    
+
+    int _PWM_BUFFER_SIZE = 10;
+    int _pwm_buffer[2];
+    int _MAX_PWM_DIFF = 40;
+    int _buffer_index = 0;
+
     //PID values
     unsigned long _last_t_tachy = micros();
     float _tachy_to_rpm_calculus = 7.699982;

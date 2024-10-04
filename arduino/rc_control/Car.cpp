@@ -3,13 +3,12 @@
 
 
 
-Car::Car(MPU_handler* mpu_handler,LiquidCrystal_I2C* lcd_screen,unsigned long SAMPLING_PERIOD ) :
-	_FrontLeft_motor(50, 51, 4, 62, 63,SAMPLING_PERIOD),    // A8 -> 62, A9 -> 63
-	_FrontRight_motor(48, 49, 5, 64, 65,SAMPLING_PERIOD),   // A10 -> 64, A11 -> 65
-	_RearLeft_motor(26, 27, 6, 66, 67,SAMPLING_PERIOD),     // A12 -> 66, A13 -> 67
-	_RearRight_motor(24, 25, 7, 68, 69,SAMPLING_PERIOD),  // A14 -> 68, A15 -> 69
-  _mpu_handler(mpu_handler),
-  _lcd_screen(lcd_screen)
+Car::Car(MPU_handler* mpu_handler) :
+	_FrontLeft_motor(50, 51, 4, 62, 63),    // A8 -> 62, A9 -> 63
+	_FrontRight_motor(48, 49, 5, 64, 65),   // A10 -> 64, A11 -> 65
+	_RearLeft_motor(26, 27, 6, 66, 67),     // A12 -> 66, A13 -> 67
+	_RearRight_motor(24, 25, 7, 68, 69),  // A14 -> 68, A15 -> 69
+  _mpu_handler(mpu_handler)
 	{
 	_motors_list[0] = &_FrontLeft_motor;
 	_motors_list[1] = &_FrontRight_motor;
@@ -51,10 +50,13 @@ void Car::update_motor_PID()
 
 void Car::send_PWM(float PWM)
 {
+  _FrontLeft_motor.sendPWM(PWM);
+  /*
   for (int i=0;i<_motors_list_length;i++)
   {
     _motors_list[i]->sendPWM(PWM);
   }
+  */
 }
 
 void Car::send_PWM(float PWM1,float PWM2,float PWM3,float PWM4)
@@ -129,6 +131,8 @@ void Car::set_car_setpoints(float Vx_setpoint,float Vy_setpoint,float omegaZ_set
 }
 
 
+
+
 void Car::update_velocity_PID()
 {       
     //Serial.println("=============");
@@ -141,7 +145,7 @@ void Car::update_velocity_PID()
     if (_omegaZ_setpoint!= 0){
     reset_target_yaw();
     float d_omegaZ = _omegaZ_setpoint-_omegaZ_gyro;
-    _omegaZ_corrected = _omegaZ_setpoint+ _Kp_omegaZ*d_omegaZ;
+    _omegaZ_corrected = _omegaZ_setpoint+ _Kp_omegaZ*d_omegaZ+_Ki_omegaZ;
     }
 
     else{
@@ -182,6 +186,21 @@ void Car::update_velocity_PID()
    
   
 }
+
+void Car::set_buffer_size(int buffer_size){
+  for (int i=0;i<_motors_list_length;i++)
+    {
+      _motors_list[i]->set_buffer_size(buffer_size);
+    }
+    }
+
+void Car::set_max_pwm(int max_pwm){
+  for (int i=0;i<_motors_list_length;i++)
+    {
+      _motors_list[i]->set_max_pwm(max_pwm);
+    }
+    }
+
 
 void Car::set_motor_Kp(float Kp){ 
   for (int i=0;i<_motors_list_length;i++)
@@ -267,33 +286,4 @@ void Car::display_motor_speed(){
   Serial.println();
 
 
-}
-
-void Car::RC_commands(){
-	/*
-  float Vx_setpoint = pitch;
-  float Vy_setpoint = roll ; 
-  float omegaZ_setpoint = yaw; 
-  // Calcul des vitesses des roues
-  float omega1 = (Vx_setpoint - Vy_setpoint - (_L + _W) * omegaZ_setpoint);
-  float omega2 = (Vx_setpoint + Vy_setpoint + (_L + _W) * omegaZ_setpoint);
-  float omega3 = (Vx_setpoint + Vy_setpoint - (_L + _W) * omegaZ_setpoint);
-  float omega4 = (Vx_setpoint - Vy_setpoint + (_L + _W) * omegaZ_setpoint);
-  float maxSpeed = max(max(abs(omega1), abs(omega2)), max(abs(omega3), abs(omega4)));
-  float maxThrottle = max((float)max(abs(Vy_setpoint),(float)abs(Vx_setpoint)),(float)abs(omegaZ_setpoint))/100;
-  // Normaliser les vitesses des roues pour qu'elles se situent entre -255 et 255
-  if (maxSpeed > 0) {
-    omega1 = omega1 / maxSpeed * 255 * maxThrottle  ;
-    omega2 = omega2 / maxSpeed * 255 * maxThrottle  ;
-    omega3 = omega3 / maxSpeed * 255 * maxThrottle  ;
-    omega4 = omega4 / maxSpeed * 255 * maxThrottle  ;
-  }
-  else{
-    omega1 = 0;
-    omega2 = 0;
-    omega3 = 0;
-    omega4 = 0;
-  }
-  this->set_motor_speed(omega1,omega2,omega3,omega4);
-  */
 }
