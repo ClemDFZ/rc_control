@@ -127,9 +127,9 @@ This architecture is exactly what is expected in practical mobile robotics: stab
 
 ```mermaid
 flowchart TD
-    A[Setpoints: Vx, Vy, omegaZ\n(from Serial or RC)] --> B[Forward kinematics + sensors\nencoders + MPU yaw/yaw-rate]
-    B --> C[Outer correction loop\nVx/Vy + yaw/omegaZ regulation]
-    C --> D[Inverse mecanum kinematics\nomega1..omega4 targets]
+    A[Setpoints: Vx, Vy, omegaZ<br/>from Serial or RC] --> B[Forward kinematics and sensors<br/>encoders plus MPU yaw/yaw-rate]
+    B --> C[Outer correction loop<br/>Vx/Vy plus yaw/omegaZ regulation]
+    C --> D[Inverse mecanum kinematics<br/>omega1 to omega4 targets]
     D --> E1[Motor PID FL]
     D --> E2[Motor PID FR]
     D --> E3[Motor PID RL]
@@ -148,7 +148,7 @@ flowchart TD
 ```mermaid
 flowchart LR
     A[USB Camera] --> B[YOLO Pose on Jetson GPU]
-    B --> C[Facial keypoints\nnose + eyes]
+    B --> C[Facial keypoints<br/>nose and eyes]
     C --> D[Image error dX, dY]
     D --> E[Visual controller]
     E -->|wZ command| F[Arduino serial parser]
