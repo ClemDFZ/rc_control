@@ -39,16 +39,18 @@ class RC_car(Thread):
             except:
                 self.ser = False
                 pass
+        self.arduino_ready = False
         self.serial_free = True
         self.movement_free = True
-        self.ser.dtr= False
         self.servo_angle = 135
         self.servo_free = True
-        self.Kp_X = (3.1416/2)/(cam_resolution[1]/2) #dX depends on cam resolution, Kp set for PI rad/s max
+        self.Kp_X = (3.1416/8)/(cam_resolution[1]/2) #dX depends on cam resolution, Kp set for PI rad/s max
+        self.Kp_X = 0.003#dX depends on cam resolution, Kp set for PI rad/s max
         self.Kp_Y = 0.03
         self.threshold_dY = 5
         self.threshold_dX = 20
         self.cap = cv2.VideoCapture(0)
+        self.kill_sub_threads = False
         Thread(target=self.arduino_bootup_thread).start()
         Thread(target=self.movement_thread).start()
         self.resolution = cam_resolution
@@ -63,6 +65,9 @@ class RC_car(Thread):
         time
         
     def arduino_bootup_thread(self):
+        """
+        Wait for arduino to finish void setup()
+        """
         t0 = time.time()
         if self.serial_connected:
             while time.time()-t0<=40:     
@@ -70,44 +75,54 @@ class RC_car(Thread):
                     line = self.ser.readline().decode('utf-8').rstrip()  # Lire une ligne complète, la décoder
                     if "setup end" in line:
                         print("Arduino loop started")
+                        self.arduino_ready = True
                         break            
             self.update_car_movement(servo=self.servo_angle)   
 
         
     def set_Kp_Y(self,value):
         self.Kp_Y = value
+
+    def set_Kp_X(self,value):
+        self.Kp_X = value
+
+
         
     def send_serial_string(self,string,wait_for_response = True,timeout=2):       
         if self.serial_connected:
-            while not self.serial_free:
-                time.sleep(0.1)
+            while not self.serial_free or not self.arduino_ready:
+                time.sleep(0.5)
+                print(string)
             self.serial_free = False
             string+="\n"
             self.ser.write(string.encode())  # Encoder la chaîne en bytes et envoyer
             self.ser.flush()
+            #print(string)
+            
             if wait_for_response:
                 t0 = time.time()
                 while time.time()-t0 <= timeout:
                     if self.ser.in_waiting > 0:  # Vérifier s'il y a des données à lire
                         line = self.ser.readline().decode('utf-8').rstrip()  # Lire une ligne complète, la décoder
                         if "done" in line:
-                            break            
-                    time.sleep(0.1)  # Pause légère pour éviter une boucle trop rapide
-            print(string)
+                            break                    
             self.serial_free = True
             
     def run(self):
-      while True:
+      end_loop = False
+      fps_timer = time.time()
+      while not end_loop:
+        fps = int(1/(time.time()-fps_timer))
+        fps_timer = time.time()
         # Lire une image depuis la webcam
         ret, frame = self.cap.read()
-    
         if not ret:
             print("Erreur de capture vidéo.")
             break
     
         # Convertir l'image en format compatible avec le modèle
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    
+        add_fps(frame,fps)
         # Effectuer la détection de pose
         results = model(frame_rgb, verbose=False)
         
@@ -121,21 +136,17 @@ class RC_car(Thread):
                 draw_keypoints(frame, keypoints_xy)
             else:
                 self.add_lost_frame()
-                
-        
         
         except Exception as e:
             print(e)
             pass
-    
-        # Annoter le frame avec les résultats
-        annotated_frame = results[0].plot()
     
         # Afficher l'image annotée
         cv2.imshow('Pose Estimation', frame)
     
         # Quitter avec la touche 'q'
         if cv2.waitKey(1) & 0xFF == ord('q'):
+            end_loop = True
             self.release()      
             
     def add_lost_frame(self):
@@ -144,10 +155,10 @@ class RC_car(Thread):
             self.face_lost = True
             self.random_cam_angle()
             
-    def movement_thread(self):
-        while True:
+    def movement_thread(self):        
+        while not self.kill_sub_threads:
             if self.movement_free:
-                time.sleep(0.1)
+                time.sleep(0.001)
             else:
                 str2send = ""
                 if self.target_Vx!=None:
@@ -162,24 +173,28 @@ class RC_car(Thread):
                     str2send+="Z"
                     str2send+=str(self.target_wZ)
                     str2send+=" "
-                if self.target_servo!=None:
+                if False:
+#                if self.target_servo!=None:
                     str2send+="S"
                     str2send+=str(self.target_servo)
                     str2send+=" "  
-                self.send_serial_string(str2send)
-                if self.target_servo!=None:
-                    self.servo_angle = self.target_servo
+                if str2send != 0:
+                    self.send_serial_string(str2send)
+                    if self.target_servo!=None:
+                        self.servo_angle = self.target_servo
                 self.movement_free = True
                    
     def update_car_movement(self,Vx=None,Vy=None,wZ=None,servo=None):  
         self.target_Vx = Vx
         self.target_Vy = Vy
         self.target_wZ = wZ
-        print(self.target_wZ)
-        self.target_servo = servo            
-        self.movement_free = False    
+        self.target_servo = servo      
+        if self.arduino_ready:
+            self.movement_free = False 
+            
 
     def release(self):
+        self.kill_sub_threads = True
         self.cap.release()
         cv2.destroyAllWindows()
         
@@ -194,8 +209,6 @@ class RC_car(Thread):
                 pass
             else:
                 pass
-            
-
         self.update_car_movement(Vx=Vx,Vy=Vy,wZ=wZ,servo=servo)
                 
     def random_cam_angle(self):
@@ -292,6 +305,8 @@ def draw_keypoints(frame, keypoints):
             cv2.putText(frame, f'{idx+1}', (int(x) + 10, int(y) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)  # Bleu pour le texte
 
 
+def add_fps(frame,fps):
+    cv2.putText(frame, "FPS:"+str(fps), (10,20), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)  # Bleu pour le texte
 
 if __name__=="__main__":
     rc = RC_car()

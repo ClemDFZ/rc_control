@@ -194,23 +194,8 @@ The master logic is implemented in `source/car_core.py`.
 
 ---
 
-## 7) Why This Is Strong for a Robotics CV
 
-This project demonstrates full-stack robotics competencies:
-
-- **Embedded real-time control**: multi-rate loops, interrupts, low-level motor actuation.
-- **Control engineering**: cascaded loops, PI/PID design, yaw stabilization, feedforward + feedback.
-- **Robot kinematics**: mecanum forward/inverse transforms, body-frame velocity control.
-- **Sensor fusion mindset**: wheel odometry combined with IMU heading/yaw-rate.
-- **Field communication protocols**: CRSF integration + robust serial command channel.
-- **Edge AI integration**: GPU-accelerated pose estimation driving closed-loop behavior.
-- **Mechatronics integration**: camera pan/tilt servo logic tied to perception.
-
-Recruiters and technical reviewers can quickly see that this is not a toy script: it is an integrated cyber-physical system from sensing to actuation.
-
----
-
-## 8) Quick Start (Developer Notes)
+## 7) Quick Start (Developer Notes)
 
 ### Arduino side
 1. Open `arduino/rc_control/rc_control.ino` in Arduino IDE.
@@ -227,7 +212,7 @@ Recruiters and technical reviewers can quickly see that this is not a toy script
 
 ---
 
-## 9) Current Notes / Improvement Opportunities
+## 8) Current Notes / Improvement Opportunities
 
 - Formalize dependency management (`requirements.txt`) for reproducible setup.
 - Add gain-tuning guide and known-good PID values for multiple battery states.
@@ -236,6 +221,6 @@ Recruiters and technical reviewers can quickly see that this is not a toy script
 
 ---
 
-## 10) Safety Disclaimer
+## 9) Safety Disclaimer
 
 This is an experimental robotics platform. Validate each subsystem independently, use hardware e-stop strategies, and test with wheels lifted/off-ground before full-motion trials.
