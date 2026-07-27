@@ -1,226 +1,203 @@
-# RC Mecanum Car + Jetson Face Tracking
+# RC Mecanum Car — Suivi facial autonome
 
-An end-to-end robotics project that combines:
-- real-time low-level control on an Arduino Mega 2560,
-- omnidirectional mecanum drive with nested control loops,
-- CRSF radio link for manual operation,
-- and GPU-assisted vision on a Jetson board for autonomous face tracking.
+> Véhicule omnidirectionnel à roues mécanum, télécommandé en radio ou piloté en autonomie par vision sur GPU.
 
-This repository is designed to showcase practical robotics engineering: embedded control, sensor fusion, kinematics, communication protocols, and vision-based actuation.
+Projet de robotique mobile **de bout en bout** : contrôle embarqué temps réel, cinématique omnidirectionnelle, fusion capteurs, et suivi de visage par IA embarquée sur Jetson.
 
 ---
 
-## 1) Project Overview
+## En bref
 
-The system is split into two tightly coupled layers:
+Le système repose sur **deux couches couplées** :
 
-- **Embedded control layer (Arduino, in `arduino/rc_control/`)**
-  - Reads wheel encoders and IMU data.
-  - Runs mecanum forward/inverse kinematics.
-  - Runs nested feedback loops:
-    - wheel-speed PID per motor,
-    - velocity/yaw correction loop on top.
-  - Accepts commands from:
-    - CRSF radio transmitter (manual mode),
-    - serial commands from Jetson (autonomous mode).
+| Couche | Matériel | Rôle |
+|--------|----------|------|
+| **Contrôle bas niveau** | Arduino Mega 2560 | Moteurs, encodeurs, IMU, décodage radio RC |
+| **Perception & comportement** | NVIDIA Jetson | Détection de visage, génération des consignes de mouvement |
 
-- **Perception + high-level behavior layer (Jetson, in `source/car_core.py`)**
-  - Runs a YOLO pose model on GPU (`ultralytics` + CUDA).
-  - Extracts facial keypoints (nose + eyes) and computes image-space errors.
-  - Closes a visual servoing loop:
-    - yaw command (`wZ`) to turn the base toward the face,
-    - camera tilt servo command to keep the face vertically centered.
+**Deux modes de fonctionnement :**
+
+- **Manuel** — télécommande radio CRSF (Crossfire), sticks mappés en vitesses mécanum (`Vx`, `Vy`, `ωZ`)
+- **Autonome** — la caméra détecte un visage et ajuste en continu l'orientation du châssis et l'inclinaison de la caméra pour le garder centré dans l'image
 
 ---
 
-## 2) Hardware/Tech Stack
+## Composants principaux
 
-### Main compute and control
-- **Arduino Mega 2560** for deterministic motor/sensor control and RC decoding.
-- **NVIDIA Jetson** as master for perception and autonomy logic.
+| | | |
+|:---:|:---:|:---:|
+| ![Arduino Mega 2560](images/mega.webp) | ![Jetson Nano](images/jetson%20nano.jpg) | ![MPU6050](images/mpu.webp) |
+| **Arduino Mega 2560** — contrôle temps réel | **Jetson Nano** — perception & IA | **MPU6050** — IMU (yaw, lacet) |
 
-### Mobility platform
-- **4x JGA25 DC gear motors with quadrature encoders** (mecanum drive base).
-- **Mecanum wheels** for omnidirectional motion (`Vx`, `Vy`, `omegaZ`).
-- **H-bridge style motor actuation** with direction + PWM per motor.
+| | | |
+|:---:|:---:|:---:|
+| ![Moteur JGA25](images/jga25%20wheel.jpg) | ![Caméra USB](images/usb%20cam.jpg) | ![Radio Taranis](images/x%20lite%20taranis.jpg) |
+| **JGA25 + roue mécanum** — 4× moteurs encodés | **Caméra USB** — capture & tracking | **Taranis X-Lite** — téléop CRSF |
 
-### Sensing and communication
-- **MPU6050 IMU** using DMP/quaternion pipeline (`Simple_MPU6050` library).
-- **CRSF (Crossfire) receiver** via `CrsfSerial` for low-latency RC channels.
-- **Pin change interrupts** for high-rate encoder tick counting.
-- **USB serial link** between Jetson and Arduino for high-level commands.
-
-### Vision and AI
-- **OpenCV** camera capture and visualization.
-- **Ultralytics YOLO pose model** (`pose_estimator_preloaded.pt`) for keypoint inference.
-- **PyTorch + CUDA** acceleration on Jetson GPU.
+| |
+|:---:|
+| ![Batteries 18650](images/18650.jpg) |
+| **Pack 18650** — alimentation embarquée |
 
 ---
 
-## 3) Repository Structure
+## Compétences mises en œuvre
 
-- `arduino/rc_control/rc_control.ino`: main real-time control loop, RC handling, MPU callback, serial parser, servo control.
-- `arduino/rc_control/Car.cpp` + `Car.h`: mecanum kinematics + body-level corrections (`Vx`, `Vy`, yaw/omegaZ).
-- `arduino/rc_control/Motor.cpp` + `Motor.h`: per-wheel speed estimation and PID to PWM.
-- `arduino/rc_control/MPU_handler.cpp`: yaw/yaw-rate estimation helper from DMP outputs.
-- `source/car_core.py`: Jetson-side face tracking, control command generation, serial protocol.
-- `models/`: expected location for trained pose model weights.
-
----
-
-## 4) Embedded Control Architecture (Arduino)
-
-### 4.1 Real-time loop scheduling
-
-In `rc_control.ino`, multiple rates are coordinated:
-- **Sampling loop**: encoder speed updates (`SAMPLING_FREQUENCY = 100 Hz`).
-- **Control loop**: kinematics + PID updates (`PID_FREQUENCY = 10 Hz`).
-- **Display/telemetry loops** at lower rates for LCD/serial output.
-
-The IMU path is event-driven by FIFO updates (`mpu.on_FIFO(update_handler)`), while encoder counts are updated through pin-change interrupts.
-
-### 4.2 CRSF manual control (Crossfire)
-
-`RC_callback()` decodes channels and maps normalized sticks to motion commands:
-- throttle/roll/pitch/yaw normalized to `[-100, 100]`,
-- arm/disarm and mode switches from auxiliary channels,
-- mecanum wheel PWM mixing in manual mode.
-
-This gives a robust teleoperation path with low-latency radio control.
-
-### 4.3 IMU integration (MPU6050)
-
-The code uses quaternion-to-Euler conversion to recover yaw from the DMP stream:
-- `get_yaw(...)` extracts yaw angle in degrees.
-- `MPU_handler` smooths yaw samples and computes yaw rate (`rad/s`).
-
-In `Car::forward_kinematics()`, body yaw and yaw-rate come from IMU, while linear components come from wheel odometry.
-
-### 4.4 Mecanum kinematics and cascaded control
-
-The control architecture is intentionally **nested**:
-
-1. **Outer body-level correction loop** (`Car::update_velocity_PID`)
-   - Computes velocity errors (`Vx`, `Vy`) and heading/yaw regulation.
-   - If explicit `omegaZ` setpoint is present, it tracks yaw-rate directly.
-   - Otherwise it performs heading hold on yaw (`target_yaw - yaw`) with PI behavior.
-
-2. **Inverse kinematics** (`Car::inverse_kinematics`)
-   - Converts corrected body commands into four wheel angular setpoints.
-
-3. **Inner wheel loops** (`Motor::PID_controller`)
-   - For each JGA25 motor:
-     - measures angular speed from encoder ticks,
-     - applies PID + feedforward (`linear_pwm_command` polynomial),
-     - constrains PWM and applies direction/PWM output.
-
-4. **Actuation**
-   - `send_PID_input()` sends bounded updates to each wheel.
-
-This architecture is exactly what is expected in practical mobile robotics: stable high-level behavior with fast local wheel loops.
+| Domaine | Réalisations |
+|---------|-------------|
+| **Robotique mobile** | Cinématique directe / inverse mécanum, boucles PID emboîtées (roue → corps) |
+| **Embarqué temps réel** | Boucles multi-fréquences, interruptions encodeurs, IMU DMP |
+| **Téléopération** | Décodage protocole CRSF, mapping sticks → consignes de vitesse |
+| **Vision par ordinateur** | Détection de pose YOLO, extraction de keypoints faciaux, servoing visuel |
+| **Edge AI** | Inférence GPU sur Jetson (PyTorch + CUDA, Ultralytics) |
+| **Intégration système** | Protocole série Jetson ↔ Arduino, commutation manuel / autonome |
 
 ---
 
-## 5) Control Loop Diagrams
+## Matériel & stack
 
-### 5.1 Nested loops on Arduino (motion control)
+### Plateforme
+
+- **4× moteurs JGA25** avec encodeurs quadrature — base mécanum omnidirectionnelle
+- **Ponts H** — direction + PWM par moteur
+- **MPU6050** — IMU avec pipeline DMP (quaternion → yaw, taux de lacet)
+- **Récepteur CRSF** — liaison radio basse latence pour la téléopération
+- **Servo caméra** — inclinaison verticale indépendante du châssis
+
+### Calcul & logiciel
+
+| Composant | Technologie |
+|-----------|-------------|
+| Contrôle embarqué | Arduino Mega 2560, C++ |
+| Perception | NVIDIA Jetson, Python |
+| Vision | OpenCV, Ultralytics YOLO pose |
+| Accélération IA | PyTorch, CUDA |
+| Liaison inter-cartes | USB série (`/dev/ttyACM*`) |
+
+---
+
+## Architecture système
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                         JETSON                               │
+│                                                              │
+│   Caméra USB ──► YOLO Pose (GPU) ──► keypoints visage        │
+│                         │                                    │
+│                         ▼                                    │
+│              erreurs dX / dY (centre image)                  │
+│                         │                                    │
+│                         ▼                                    │
+│              consignes ωZ + angle servo caméra                 │
+└──────────────────────────┬───────────────────────────────────┘
+                           │ USB série  (X, Y, Z, S)
+┌──────────────────────────▼───────────────────────────────────┐
+│                      ARDUINO MEGA                              │
+│                                                                │
+│   CRSF (manuel) ──┐                                            │
+│                   ├──► consignes Vx, Vy, ωZ                    │
+│   Série (auto) ───┘           │                                │
+│                               ▼                                │
+│              cinématique directe (encodeurs + IMU)             │
+│                               │                                │
+│                               ▼                                │
+│              boucle correction corps (Vx, Vy, yaw)             │
+│                               │                                │
+│                               ▼                                │
+│              cinématique inverse → 4 vitesses roues          │
+│                               │                                │
+│                               ▼                                │
+│              4× PID moteur → PWM + direction                 │
+└────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Contrôle embarqué (Arduino)
+
+Le firmware (`arduino/rc_control/`) gère l'ensemble du contrôle bas niveau avec des **boucles à fréquences différenciées** :
+
+| Boucle | Fréquence | Rôle |
+|--------|-----------|------|
+| Échantillonnage encodeurs | 100 Hz | Estimation vitesse angulaire par roue |
+| Contrôle PID | 10 Hz | Cinématique + correction + actuation |
+| IMU | événementiel | Mise à jour yaw / taux de lacet (FIFO DMP) |
+
+### Boucles emboîtées
+
+Le contrôle est organisé en **deux niveaux** :
+
+1. **Boucle externe (corps)** — régule les vitesses `Vx`, `Vy` et le cap / taux de lacet `ωZ` à partir de l'odométrie roues + IMU
+2. **Boucle interne (roues)** — 4 PID indépendants convertissent les consignes de vitesse angulaire en PWM moteur, avec modèle feedforward
 
 ```mermaid
 flowchart TD
-    A[Setpoints: Vx, Vy, omegaZ<br/>from Serial or RC] --> B[Forward kinematics and sensors<br/>encoders plus MPU yaw/yaw-rate]
-    B --> C[Outer correction loop<br/>Vx/Vy plus yaw/omegaZ regulation]
-    C --> D[Inverse mecanum kinematics<br/>omega1 to omega4 targets]
-    D --> E1[Motor PID FL]
-    D --> E2[Motor PID FR]
-    D --> E3[Motor PID RL]
-    D --> E4[Motor PID RR]
-    E1 --> F[Motor drivers + JGA25 motors]
-    E2 --> F
-    E3 --> F
-    E4 --> F
-    F --> G[Wheel encoders]
-    G --> B
-    H[MPU6050 DMP] --> B
+    SP[Consignes Vx Vy ωZ<br/>RC ou Série] --> FK[Cinématique directe<br/>encodeurs + IMU]
+    FK --> OUT[Boucle correction corps]
+    OUT --> IK[Cinématique inverse mécanum]
+    IK --> M1[PID moteur FL]
+    IK --> M2[PID moteur FR]
+    IK --> M3[PID moteur RL]
+    IK --> M4[PID moteur RR]
+    M1 & M2 & M3 & M4 --> ACT[Moteurs JGA25]
+    ACT --> ENC[Encodeurs]
+    ENC --> FK
+    IMU[MPU6050] --> FK
 ```
 
-### 5.2 Vision-to-actuation loop on Jetson + Arduino
+### Téléopération CRSF
+
+Les sticks de la radio sont normalisés sur `[-100, 100]` et convertis en consignes mécanum. Des canaux auxiliaires gèrent l'armement et le basculement de mode.
+
+---
+
+## Suivi facial (Jetson)
+
+Le script `source/car_core.py` implémente la boucle de **servoing visuel** :
+
+### Pipeline
+
+1. **Capture** — flux caméra USB via OpenCV
+2. **Inférence** — modèle YOLO pose (`pose_estimator_preloaded.pt`) sur GPU
+3. **Sélection** — filtrage du sujet principal (confiance + cohérence des keypoints)
+4. **Extraction** — nez + yeux → calcul des écarts `dX` (horizontal) et `dY` (vertical) par rapport au centre image
+5. **Commande** — conversion en `ωZ` (rotation châssis) et angle servo (inclinaison caméra)
+6. **Envoi** — protocole série compact vers l'Arduino (`Z...` pour ωZ, `S...` pour le servo)
 
 ```mermaid
 flowchart LR
-    A[USB Camera] --> B[YOLO Pose on Jetson GPU]
-    B --> C[Facial keypoints<br/>nose and eyes]
-    C --> D[Image error dX, dY]
-    D --> E[Visual controller]
-    E -->|wZ command| F[Arduino serial parser]
-    E -->|Servo angle command| F
-    F --> G[Car yaw control + camera servo]
-    G --> H[Robot/camera motion]
-    H --> A
+    CAM[Caméra] --> YOLO[YOLO Pose · GPU]
+    YOLO --> KP[Keypoints<br/>nez · yeux]
+    KP --> ERR[Erreurs dX dY]
+    ERR --> CTRL[Contrôleur visuel]
+    CTRL -->|ωZ| SER[Série → Arduino]
+    CTRL -->|Servo| SER
+    SER --> ROB[Mouvement robot]
+    ROB --> CAM
 ```
 
----
-
-## 6) Jetson Face Tracking Pipeline
-
-The master logic is implemented in `source/car_core.py`.
-
-### 6.1 Model inference
-- Loads a pose model with `ultralytics.YOLO(...).to('cuda')`.
-- Captures frames from camera (`cv2.VideoCapture(0)`).
-- Runs keypoint inference each frame.
-
-### 6.2 Feature extraction
-- Selects one tracked person (`filter_keypoints`), prioritizing confidence and keypoint consistency.
-- Uses:
-  - nose keypoint,
-  - left and right eye keypoints.
-- Computes errors relative to image center:
-  - `dX`: horizontal offset,
-  - `dY`: vertical offset.
-
-### 6.3 Visual servoing behavior
-- Horizontal error (`dX`) is converted to angular velocity command `wZ` (base yaw correction).
-- Vertical error (`dY`) is converted to servo angle correction for camera tilt.
-- Deadbands (`threshold_dX`, `threshold_dY`) reduce jitter.
-- If face is lost for several frames, fallback behavior sends random servo angles and neutral yaw to reacquire target.
-
-### 6.4 Serial protocol with Arduino
-- Jetson sends compact command strings:
-  - `X...` for `Vx`,
-  - `Y...` for `Vy`,
-  - `Z...` for `omegaZ`,
-  - `S...` for camera servo angle.
-- Arduino `parseString(...)` applies those values to the motion setpoints and servo.
+Des **zones mortes** (`threshold_dX`, `threshold_dY`) limitent les oscillations. En cas de perte de cible, un comportement de recherche relance l'acquisition.
 
 ---
 
+## Structure du repo
 
-## 7) Quick Start (Developer Notes)
-
-### Arduino side
-1. Open `arduino/rc_control/rc_control.ino` in Arduino IDE.
-2. Target board: **Arduino Mega 2560**.
-3. Ensure required libraries are available (`CRSF`, `Simple_MPU6050`, `PinChangeInterrupt`, `Servo`, etc.).
-4. Upload firmware and verify serial output includes `setup end`.
-
-### Jetson side
-1. Install Python dependencies (OpenCV, torch, ultralytics, pyserial).
-2. Place pose model weights at `models/pose_estimator_preloaded.pt`.
-3. Run:
-   - `python3 source/car_core.py`
-4. Verify serial connection to `/dev/ttyACM*` and camera availability.
+| Fichier / dossier | Description |
+|-------------------|-------------|
+| `arduino/rc_control/rc_control.ino` | Boucle principale, RC, IMU, parser série, servo |
+| `arduino/rc_control/Car.cpp` | Cinématique mécanum + correction corps |
+| `arduino/rc_control/Motor.cpp` | PID par roue, estimation vitesse encodeur |
+| `arduino/rc_control/MPU_handler.cpp` | Extraction yaw / taux de lacet depuis le DMP |
+| `source/car_core.py` | Tracking facial, génération commandes, liaison série |
+| `models/` | Poids du modèle YOLO pose |
 
 ---
 
-## 8) Current Notes / Improvement Opportunities
+## Démo
 
-- Formalize dependency management (`requirements.txt`) for reproducible setup.
-- Add gain-tuning guide and known-good PID values for multiple battery states.
-- Add benchmark metrics (latency, tracking FPS, heading error, velocity error).
-- Add unit/integration tests for serial parsing and control safety guards.
+<!-- Lien vidéo ou GIF -->
+`[Vidéo démo](docs/demo.mp4)` · `[GIF tracking](docs/demo.gif)`
 
 ---
 
-## 9) Safety Disclaimer
-
-This is an experimental robotics platform. Validate each subsystem independently, use hardware e-stop strategies, and test with wheels lifted/off-ground before full-motion trials.
+*Projet expérimental — chaque sous-système validé indépendamment, tests initiaux avec roues levées.*
